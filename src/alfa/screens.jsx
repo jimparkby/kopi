@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { fmt, fmtInt, pct, qty, when } from '../shared/format.js';
+import { fmt, fmtInt, pct, qty, when, roundUp } from '../shared/format.js';
 import { Icon, Solid } from '../shared/icons.jsx';
 import { Switch } from '../shared/ui.jsx';
 import { ASSETS, ASSET_KEYS, FAVS, CAT_COLORS, REG_TYPES, PRODUCTS, nextDate, daysUntil } from './model.js';
@@ -464,18 +464,12 @@ export function Kopi({ ctx }) {
   const { d, R, p, commit, buyNow, reset, resetArmed, setSheet, pop } = ctx;
   const A = ASSETS[d.asset];
   const pp = Math.min(100, (d.piggy / d.threshold) * 100);
-  const circ = (items, cur, key, lab) =>
-    items.map((v) => (
-      <button key={v} className={'a-circle' + (v === cur ? ' on' : '')} onClick={() => commit((s) => ({ ...s, [key]: v }))}>
-        {lab(v)}
-        {v === cur && <span className="a-circle-ok"><Icon name="check" size={11} stroke={3.5} /></span>}
-      </button>
-    ));
   const holdRows = ASSET_KEYS.filter((a) => d.hold[a].cost > 0 || a === d.asset);
-  // Настройки свёрнуты: открыта максимум одна строка, история — последние 3 записи.
-  const [fold, setFold] = useState(null);
+  // Пример на чашке кофе пересчитывается вместе с настройками; оценка в месяц — средняя сдача × 40 покупок.
+  const sample = roundUp(640, d.step, d.mult);
+  const monthly = Math.round((40 * d.step * d.mult) / 2);
+  const catOf = Object.fromEntries(d.ops.map((o) => ['r' + o.id.slice(1), o.cat]));
   const [allHist, setAllHist] = useState(false);
-  const toggle = (k) => setFold((f) => (f === k ? null : k));
   return (
     <>
       <BackHead title="KOPI · крипто со сдачи" onBack={pop} right={<span className="a-live-dot" title={R.src} style={{ background: R.live ? GREEN : '#A0A8B4' }} />} />
@@ -513,53 +507,55 @@ export function Kopi({ ctx }) {
             <button className="a-btn gray" onClick={() => setSheet('shop')}>Оплатить картой</button>
           </div>
 
-          <h2 className="a-h2">Настройки</h2>
-          <div className="a-card a-list">
-            <Fold icon={<span className="a-coin lg" style={{ background: A.bg }}>{A.sym}</span>} label="Куда вкладывать" value={A.name} open={fold === 'asset'} onToggle={() => toggle('asset')}>
-              {ASSET_KEYS.map((a) => (
-                <button key={a} className="a-opt" onClick={() => { commit((s) => ({ ...s, asset: a })); setFold(null); }} aria-pressed={d.asset === a}>
-                  <span className="a-coin md" style={{ background: ASSETS[a].bg }}>{ASSETS[a].sym}</span>
-                  <span className="a-row-main"><span>{ASSETS[a].name}</span><small>{ASSETS[a].desc}</small></span>
-                  <span className={'a-radio' + (d.asset === a ? ' on' : '')}>{d.asset === a && <Icon name="check" size={13} stroke={3} />}</span>
-                </button>
-              ))}
-            </Fold>
-            <Fold icon={<span className="a-sq light sm">↑</span>} label="Округлять до" value={fmtInt(d.step) + ' BYN'} open={fold === 'step'} onToggle={() => toggle('step')}>
-              <div className="a-circles">{circ([100, 500, 1000], d.step, 'step', (v) => fmtInt(v))}<span className="a-muted">BYN</span></div>
-            </Fold>
-            <Fold icon={<span className="a-sq light sm">×</span>} label="Множитель сдачи" value={'×' + d.mult} open={fold === 'mult'} onToggle={() => toggle('mult')}>
-              <div className="a-circles">{circ([1, 2, 5], d.mult, 'mult', (v) => '×' + v)}</div>
-            </Fold>
-            <Fold icon={<span className="a-sq light sm">≡</span>} label="Покупать пакетом" value={'от ' + fmtInt(d.threshold) + ' BYN'} open={fold === 'threshold'} onToggle={() => toggle('threshold')}>
-              <div className="a-seg">
-                {[1000, 2000, 5000].map((v) => <button key={v} className={d.threshold === v ? 'on' : ''} onClick={() => commit((s) => ({ ...s, threshold: v }))}>{fmtInt(v)} BYN</button>)}
-              </div>
-            </Fold>
-            <button className="a-row" onClick={() => setSheet('wallet')}>
-              <span className="a-sq sm" style={{ background: '#2470FF', color: '#fff' }}>W</span>
-              <span className="a-row-main"><span>Хранение</span><small>Кошелёк WhiteBird</small></span>
-              <Icon name="right" size={18} className="a-chev" />
-            </button>
+          <h2 className="a-h2">Во что вкладывать</h2>
+          <div className="a-pick">
+            {ASSET_KEYS.map((a) => (
+              <button key={a} className={'a-pick-tile' + (d.asset === a ? ' on' : '')} onClick={() => commit((s) => ({ ...s, asset: a }))} aria-pressed={d.asset === a}>
+                <span className="a-coin md" style={{ background: ASSETS[a].bg }}>{ASSETS[a].sym}</span>
+                <b>{a === 'SAFE' ? 'BYN' : ASSETS[a].name}</b>
+                <small>{RISK[a]}</small>
+                {d.asset === a && <span className="a-pick-ok"><Icon name="check" size={11} stroke={3.5} /></span>}
+              </button>
+            ))}
           </div>
 
-          <h2 className="a-h2">Округления и покупки · {d.hist.filter((h) => h.type === 'round').length}</h2>
+          <h2 className="a-h2">Как копится сдача</h2>
+          <div className="a-card a-tune">
+            <div className="a-tune-demo">
+              <span className="a-reg-ic" style={{ background: CAT_COLORS.Кафе }}>К</span>
+              <span className="a-row-main"><span>Кофе {fmt(640)} BYN</span><small>спишется {fmt(640 + sample)} BYN</small></span>
+              <b className="k">+{fmt(sample)}</b>
+            </div>
+            <Tune label="Округлять до" items={[100, 500, 1000]} cur={d.step} lab={(v) => fmtInt(v) + ' BYN'} set={(v) => commit((s) => ({ ...s, step: v }))} />
+            <Tune label="Множитель сдачи" items={[1, 2, 5]} cur={d.mult} lab={(v) => '×' + v} set={(v) => commit((s) => ({ ...s, mult: v }))} />
+            <Tune label="Покупать, когда в копилке" items={[1000, 2000, 5000]} cur={d.threshold} lab={(v) => fmtInt(v) + ' BYN'} set={(v) => commit((s) => ({ ...s, threshold: v }))} />
+            <span className="a-tune-note">≈ {fmt(monthly)} BYN в месяц при 40 покупках</span>
+          </div>
+
+          <button className="a-card a-row solo" onClick={() => setSheet('wallet')}>
+            <span className="a-sq sm" style={{ background: '#2470FF', color: '#fff' }}>W</span>
+            <span className="a-row-main"><span>Хранится в WhiteBird</span><small>Покупку проводит резидент ПВТ</small></span>
+            <Icon name="right" size={18} className="a-chev" />
+          </button>
+
+          <h2 className="a-h2">Сдача и покупки</h2>
           <div className="a-card a-list">
             {d.hist.slice(0, allHist ? 12 : 3).map((h) => (h.type === 'round' ? (
               <div key={h.id} className="a-row static">
-                <span className="a-sq kopi-soft">↑</span>
+                <span className="a-reg-ic" style={{ background: CAT_COLORS[catOf[h.id]] || '#8A96A8' }}>{h.merchant[0]}</span>
                 <span className="a-row-main"><span>{h.merchant}</span><small>{fmt(h.a)} → {fmt(h.rounded)} BYN · {when(h.t)}</small></span>
                 <b className="k">+{fmt(h.roundup)}</b>
               </div>
             ) : (
               <div key={h.id} className="a-row static">
                 <span className="a-coin lg" style={{ background: ASSETS[h.asset].bg }}>{ASSETS[h.asset].sym}</span>
-                <span className="a-row-main"><span>Покупка {h.asset === 'SAFE' ? 'консервативного' : h.asset}</span><small>{h.asset === 'SAFE' ? 'пакетом' : qty(h.qty, h.asset) + ' ' + h.asset} · {when(h.t)}</small></span>
+                <span className="a-row-main"><span>Покупка {h.asset === 'SAFE' ? 'BYN-инструмента' : h.asset}</span><small>{h.asset === 'SAFE' ? 'пакетом' : qty(h.qty, h.asset) + ' ' + h.asset} · {when(h.t)}</small></span>
                 <b>{fmt(h.amount)} BYN</b>
               </div>
             )))}
             {d.hist.length > 3 && (
               <button className="a-more" onClick={() => setAllHist(!allHist)} aria-expanded={allHist}>
-                {allHist ? 'Свернуть' : 'Показать все · ' + Math.min(12, d.hist.length)}
+                {allHist ? 'Свернуть' : 'Ещё ' + (Math.min(12, d.hist.length) - 3)}
                 <Icon name="chevDown" size={16} stroke={2.6} style={{ transform: allHist ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
               </button>
             )}
@@ -571,16 +567,16 @@ export function Kopi({ ctx }) {
   );
 }
 
-function Fold({ icon, label, value, open, onToggle, children }) {
+const RISK = { BTC: 'Высокий риск', ETH: 'Средний риск', SAFE: 'Без скачков' };
+
+/** Строка настройки: подпись и сегменты, всё на виду — без раскрытия. */
+function Tune({ label, items, cur, lab, set }) {
   return (
-    <div className={'a-fold' + (open ? ' open' : '')}>
-      <button className="a-row" onClick={onToggle} aria-expanded={open}>
-        {icon}
-        <span className="a-row-main"><span>{label}</span></span>
-        <span className="a-fold-val">{value}</span>
-        <Icon name="chevDown" size={18} stroke={2.4} className="a-chev a-fold-chev" />
-      </button>
-      {open && <div className="a-fold-body">{children}</div>}
+    <div className="a-tune-row">
+      <span>{label}</span>
+      <div className="a-seg">
+        {items.map((v) => <button key={v} className={cur === v ? 'on' : ''} onClick={() => set(v)}>{lab(v)}</button>)}
+      </div>
     </div>
   );
 }
