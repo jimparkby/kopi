@@ -83,13 +83,13 @@ function Section({ title, children, defaultOpen = true }) {
   );
 }
 
-function ProdRow({ icon, top, main, sub, subColor, onClick }) {
+function ProdRow({ icon, top, main, sub, subColor, onClick, plain }) {
   return (
     <button className="a-prod" onClick={onClick}>
       {icon}
       <span className="a-prod-text">
         {top && <span className="a-prod-top">{top}</span>}
-        <b>{main}</b>
+        <b style={plain ? { fontWeight: 400 } : undefined}>{main}</b>
         {sub && <span className="a-prod-sub" style={{ color: subColor }}>{sub}</span>}
       </span>
     </button>
@@ -97,16 +97,11 @@ function ProdRow({ icon, top, main, sub, subColor, onClick }) {
 }
 
 /* ───────────── Главная = Мои продукты ───────────── */
+// Повторяет главную Альфа Банка: те же четыре секции. KOPI — строка-счёт в «Картах и счетах».
 export function Home({ ctx }) {
   const { d, R, p, push, setSheet } = ctx;
   const total = d.balance + Math.round(d.usd * R.usd) + p.value + d.piggy;
-  const upcoming = d.regs
-    .filter((r) => r.active && !r.hidden)
-    .map((r) => ({ ...r, next: nextDate(r) }))
-    .filter((r) => r.next)
-    .sort((a, b) => a.next - b.next);
   const A = ASSETS[d.asset];
-  const pp = Math.min(100, (d.piggy / d.threshold) * 100);
 
   return (
     <div className="a-page">
@@ -121,60 +116,22 @@ export function Home({ ctx }) {
           />
         </Section>
 
-        <Section title="KOPI · крипто со сдачи">
-          <ProdRow
-            icon={<span className="a-sq kopi">K</span>}
-            top={'Портфель со сдачи · ' + (p.invested ? pct(p.pr) : '—')}
-            main={<>{fmt(p.value)} <Byn /></>}
-            sub={'Копилка ' + fmt(d.piggy) + ' из ' + fmtInt(d.threshold) + ' → ' + A.code}
-            subColor="var(--kopi)"
-            onClick={() => push({ id: 'kopi' })}
-          />
-          <div className="a-kopi-strip">
-            <Ring value={pp} size={40} label={Math.round(pp) + '%'} />
-            <span>До покупки {A.code} осталось <b>{fmt(Math.max(0, d.threshold - d.piggy))} BYN</b></span>
-            <button onClick={() => setSheet('shop')}>Оплатить</button>
-          </div>
-        </Section>
-
-        <Section title="Регулярные платежи">
-          <ProdRow
-            icon={<span className="a-sq red"><Icon name="repeat" size={22} /></span>}
-            top={upcoming.length + ' активных · подписки и автоплатежи'}
-            main="Мои подписки"
-            sub={upcoming[0] ? 'Ближайшее: ' + upcoming[0].name + ', ' + (daysUntil(upcoming[0].next) === 0 ? 'сегодня' : 'через ' + daysUntil(upcoming[0].next) + ' дн.') : ''}
-            subColor="var(--muted)"
-            onClick={() => push({ id: 'subs' })}
-          />
-          <div className="a-upcoming">
-            {upcoming.slice(0, 6).map((r) => {
-              const left = daysUntil(r.next);
-              const span = r.type === 'bill' ? 14 : r.period === 'week' ? 7 : 30;
-              return (
-                <button key={r.id} className="a-up-card" onClick={() => setSheet('reg:' + r.id)}>
-                  <span className="a-up-top">
-                    <RegIcon r={r} size={30} />
-                    <span className="a-up-amt"><b>{fmt(r.amt)}</b><small style={{ color: REG_TYPES[r.type].color }}>{REG_TYPES[r.type].label}</small></span>
-                  </span>
-                  <b className="a-up-name">{r.name}</b>
-                  <span className="a-up-days">
-                    <Ring value={Math.max(4, 100 - (left / span) * 100)} size={24} label={left} color={left <= 2 ? RED : '#0B1F35'} />
-                    <small>{left === 0 ? 'Сегодня' : left === 1 ? 'Завтра' : 'Дней до списания'}</small>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </Section>
-
         <Section title="Пакет решений">
-          <ProdRow icon={<span className="a-sq gold"><Icon name="card" size={22} /></span>} main="Smart Gold" sub="В процессе" subColor="var(--purple)" onClick={() => setSheet('package')} />
+          <ProdRow icon={<span className="a-sq gold"><Icon name="card" size={22} /></span>} main="Smart Gold" plain sub="В процессе" subColor="var(--purple)" onClick={() => setSheet('package')} />
         </Section>
 
         <Section title="Карты и счета">
           <ProdRow icon={<span className="a-cardart pink" />} top="9.7781 | Текущий счет" main={<>{fmt(d.balance)} <Byn /></>} onClick={() => setSheet('account:byn')} />
           <ProdRow icon={<span className="a-sq orange">$</span>} top="Текущий счет" main={fmt(d.usd) + ' $'} onClick={() => setSheet('account:usd')} />
           <ProdRow icon={<span className="a-cardart gold">VISA</span>} top="4.2702 | Текущий счет" main="0 €" onClick={() => setSheet('account:eur')} />
+          <ProdRow
+            icon={<span className="a-sq kopi">K</span>}
+            top="KOPI | Крипто со сдачи"
+            main={<>{fmt(p.value + d.piggy)} <Byn /></>}
+            sub={'Копилка ' + fmt(d.piggy) + ' из ' + fmtInt(d.threshold) + ' → ' + A.code}
+            subColor="var(--purple)"
+            onClick={() => push({ id: 'kopi' })}
+          />
         </Section>
 
         <Section title="Карты других банков">
