@@ -1,14 +1,11 @@
-import { roundUp } from '../shared/format.js';
+import { KOPI_INFO, KOPI_COINS } from '../shared/kopi.js';
 
-export const ALFA_KEY = 'kopi.alfa.v3';
+export const ALFA_KEY = 'kopi.alfa.v4';
 const DAY = 864e5;
 
-export const ASSETS = {
-  BTC: { name: 'Bitcoin', code: 'BTC', desc: 'Высокий риск, высокий потенциал', sym: '₿', bg: '#F7931A' },
-  ETH: { name: 'Ethereum', code: 'ETH', desc: 'Вторая криптовалюта по капитализации', sym: 'Ξ', bg: '#5B6EE1' },
-  SAFE: { name: 'Консервативный', code: 'BYN', desc: 'Спокойный инструмент без скачков курса', sym: 'Br', bg: '#0B1F35' },
-};
-export const ASSET_KEYS = ['BTC', 'ETH', 'SAFE'];
+// Активы KOPI общие с WhiteBird: покупка идёт в кошелёк биржи.
+export const ASSETS = KOPI_INFO;
+export const ASSET_KEYS = KOPI_COINS;
 
 /** Типы регулярных платежей — цвета как в референсе: подписки жёлтые, автоплатежи зелёные, счета фиолетовые. */
 export const REG_TYPES = {
@@ -93,33 +90,13 @@ export function nextDate(r, from = today0()) {
 export const daysUntil = (d) => (d ? Math.round((d - today0()) / DAY) : null);
 export const monthlyCost = (r) => (r.type === 'bill' ? 0 : r.period === 'week' ? Math.round((r.amt * 52) / 12) : r.amt);
 
-export function applyBuy(s, rates, t) {
-  const amt = s.piggy;
-  const asset = s.asset;
-  const rate = asset === 'SAFE' ? 1 : rates[asset];
-  const q = asset === 'SAFE' ? amt / 100 : amt / 100 / rate;
-  const hold = { ...s.hold, [asset]: { qty: s.hold[asset].qty + q, cost: s.hold[asset].cost + amt } };
-  const p = { id: 'b' + t, type: 'buy', asset, amount: amt, qty: q, rate, t };
-  return { s: { ...s, piggy: 0, hold, hist: [p, ...s.hist] }, p };
-}
-
-/** Оплата картой: списание, сдача в копилку, автопокупка при достижении порога. */
-export function applyPay(s, merchant, a, t, rates, withKopi = true, cat = 'Прочее', regId = null) {
-  const up = withKopi ? roundUp(a, s.step, s.mult) : 0;
-  s = {
+/** Оплата картой: списание покупки и сдачи KOPI (сдача сразу уходит в WhiteBird). */
+export function applyPay(s, merchant, a, t, roundup = 0, cat = 'Прочее', regId = null) {
+  return {
     ...s,
-    balance: s.balance - a - up,
-    piggy: s.piggy + up,
-    hist: up > 0 ? [{ id: 'r' + t, type: 'round', merchant, a, rounded: Math.ceil(a / s.step) * s.step, roundup: up, t }, ...s.hist] : s.hist,
-    ops: [{ id: 'o' + t, type: 'pay', title: merchant, amount: -(a + up), round: up, cat, regId, t }, ...s.ops],
+    balance: s.balance - a - roundup,
+    ops: [{ id: 'o' + t, type: 'pay', title: merchant, amount: -(a + roundup), round: roundup, cat, regId, t }, ...s.ops],
   };
-  let purchase = null;
-  if (s.piggy > 0 && s.piggy >= s.threshold) {
-    const r = applyBuy(s, rates, t + 1);
-    s = r.s;
-    purchase = r.p;
-  }
-  return { s, roundup: up, purchase };
 }
 
 function seedRegs() {
@@ -140,54 +117,19 @@ function seedRegs() {
   ];
 }
 
-/** Неделя покупок для демо: портфель уже не пустой. */
-export function seed(rates) {
-  const now = Date.now();
-  const buys = [
-    ['Кофе', 640, 6.2, 'Кафе'], ['Продукты', 4730, 5.8, 'Продукты'], ['Такси', 1280, 5.1, 'Такси'], ['Шаурма', 990, 4.3, 'Кафе'],
-    ['Онлайн-заказ', 8915, 3.6, 'Онлайн-покупки'], ['Кофе', 580, 2.9, 'Кафе'], ['Газ', 2347, 2.2, 'ЖКХ'], ['Продукты', 3218, 1.4, 'Продукты'],
-    ['Такси', 1110, 0.8, 'Такси'], ['Кофе', 640, 0.15, 'Кафе'],
-  ];
-  let s = {
-    v: 3,
-    seeded: true,
-    reseeded: false,
-    balance: 124590,
-    usd: 15000,
-    piggy: 0,
-    step: 100,
-    mult: 1,
-    asset: 'BTC',
-    threshold: 1000,
-    hold: { BTC: { qty: 0, cost: 0 }, ETH: { qty: 0, cost: 0 }, SAFE: { qty: 0, cost: 0 } },
+/** Чистый старт: на карте ничего нет, истории нет — всё появляется только от действий пользователя. */
+export function fresh() {
+  return {
+    v: 4,
+    balance: 0,
+    usd: 0,
     regs: seedRegs(),
     hints: {},
     products: [],
     settings: { push: true, faceId: true, kopiPush: true, lang: 'ru' },
     readAt: 0,
-    hist: [],
-    ops: [
-      { id: 't0', type: 'topup', title: 'Зарплата', amount: 185000, round: 0, cat: 'Пополнения', t: now - 7 * DAY },
-      { id: 't1', type: 'pay', title: 'Кинотеатр онлайн', amount: -1499, round: 0, cat: 'Кино', regId: 's2', t: now - 6.5 * DAY },
-      { id: 't2', type: 'pay', title: 'Музыка', amount: -899, round: 0, cat: 'Музыка', regId: 's1', t: now - 4.7 * DAY },
-    ],
+    ops: [],
   };
-  buys.forEach(([m, a, d, cat], i) => {
-    s = applyPay(s, m, a, now - d * DAY, rates, true, cat).s;
-    if (i === 4) s = applyBuy({ ...s, piggy: s.piggy + 700 }, rates, now - 3.5 * DAY).s;
-    if (i === 7) s = applyBuy({ ...s, asset: 'ETH', piggy: s.piggy + 300 }, rates, now - 1.3 * DAY).s;
-  });
-  s.ops.sort((a, b) => b.t - a.t);
-  s.asset = 'BTC';
-  return s;
 }
 
-export const isValid = (s) => s && s.v === 3 && Array.isArray(s.regs) && Array.isArray(s.hist) && s.hist.some((h) => h.type === 'buy');
-
-export function portfolio(s, R) {
-  const val = (a) => (a === 'SAFE' ? s.hold.SAFE.cost : Math.round(s.hold[a].qty * R[a] * 100));
-  const value = ASSET_KEYS.reduce((t, a) => t + val(a), 0);
-  const invested = ASSET_KEYS.reduce((t, a) => t + s.hold[a].cost, 0);
-  const pr = invested ? ((value - invested) / invested) * 100 : 0;
-  return { val, value, invested, pr };
-}
+export const isValid = (s) => s && s.v === 4 && Array.isArray(s.regs) && Array.isArray(s.ops);

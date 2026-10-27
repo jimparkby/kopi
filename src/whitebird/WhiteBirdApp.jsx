@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fmt, fmtInt, pct, usd, parseAmount, roundUp } from '../shared/format.js';
+import { fmt, fmtInt, pct, usd, parseAmount } from '../shared/format.js';
+import { useKopi, kopiValue } from '../shared/kopi.js';
 import { FALLBACK, useRates } from '../shared/rates.js';
 import { usePersisted, useToast, useArmed } from '../shared/hooks.js';
 import { Icon } from '../shared/icons.jsx';
 import { Phone, Toast, Sheet, Switch } from '../shared/ui.jsx';
 import {
-  WB_KEY, COINS, COIN_KEYS, KOPI_ASSETS, KOPI_DESC, PRESETS, PROMO, FEE, FEE_PROMO,
-  priceByn, fresh, isValid, applyBuy, short,
+  WB_KEY, COINS, COIN_KEYS, KOPI_ASSETS, KOPI_DESC, PROMO, FEE, FEE_PROMO,
+  priceByn, fresh, isValid, short,
 } from './model.js';
 import './whitebird.css';
 
@@ -15,7 +16,7 @@ const RED = '#F25C66';
 const ORANGE = '#F5A623';
 
 /** Количество монет с точностью, принятой для актива. */
-const cq = (q, a) => q.toLocaleString('ru-RU', { minimumFractionDigits: COINS[a]?.dp > 4 ? COINS[a].dp : 2, maximumFractionDigits: COINS[a]?.dp ?? 2 });
+const cq = (q, a) => q.toLocaleString('ru-RU', { minimumFractionDigits: q && COINS[a]?.dp > 4 ? COINS[a].dp : 2, maximumFractionDigits: COINS[a]?.dp ?? 2 });
 const num = (v) => {
   const n = parseFloat(String(v || '').replace(/\s/g, '').replace(',', '.'));
   return n > 0 && Number.isFinite(n) ? n : 0;
@@ -34,8 +35,10 @@ const timeOf = (t) => new Date(t).toLocaleTimeString('ru-RU', { hour: '2-digit',
 
 export default function WhiteBirdApp() {
   const [d, setD] = usePersisted(WB_KEY, fresh, isValid);
+  const [k, setK] = useKopi();
   const rates = useRates();
   const R = rates || FALLBACK;
+  const kp = kopiValue(k, R);
   const [tab, setTab] = useState('home');
   const [screen, setScreen] = useState(null); // profile | methods | kopi | order
   const [sheet, setSheet] = useState(null);
@@ -46,6 +49,30 @@ export default function WhiteBirdApp() {
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   const later = (fn, ms) => timers.current.push(setTimeout(fn, ms));
 
+  // Сдача из Альфа Банка: каждая новая операция KOPI зачисляет купленную монету в кошелёк и попадает в историю.
+  useEffect(() => {
+    const incoming = k.ops.filter((o) => o.t > (d.kopiSync || 0));
+    if (!incoming.length) return;
+    setD((s) => {
+      // Сверяемся с уже зачисленным внутри обновления — повторный запуск эффекта не зачислит дважды.
+      const incoming = k.ops.filter((o) => o.t > (s.kopiSync || 0));
+      if (!incoming.length) return s;
+      const bal = { ...s.bal };
+      incoming.forEach((o) => { bal[o.asset] = (bal[o.asset] || 0) + o.qty; });
+      const hist = incoming.map((o) => ({ id: 'kopi' + o.id, type: 'kopi', merchant: o.merchant, a: o.a, roundup: o.roundup, asset: o.asset, qty: o.qty, status: 'done', t: o.t }));
+      return { ...s, bal, hist: [...hist, ...s.hist], kopiSync: Math.max(...incoming.map((o) => o.t)) };
+    });
+    const sum = incoming.reduce((t, o) => t + o.roundup, 0);
+    showToast('Из Альфа Банка: сдача ' + fmt(sum) + ' BYN', 'Куплено и зачислено в кошелёк · ' + incoming.length + ' покуп' + (incoming.length === 1 ? 'ка' : 'ки'));
+  }, [k.ops]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Переход из Альфы кнопкой «Открыть WhiteBird» — сразу показываем KOPI.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('kopi.open') === '1') { sessionStorage.removeItem('kopi.open'); setScreen('kopi'); }
+    } catch (e) { /* ignore */ }
+  }, []);
+
   const go = (t) => { setTab(t); setScreen(null); setSheet(null); };
   const open = (s) => { setScreen(s); setSheet(null); };
   const coinByn = (a, q) => Math.round(q * priceByn(R, a) * 100);
@@ -55,46 +82,6 @@ export default function WhiteBirdApp() {
   const unread = d.hist.filter((h) => h.t > d.readAt).length;
 
   const pushHist = (s, h) => ({ ...s, hist: [{ status: 'done', t: Date.now(), id: h.type + Date.now(), ...h }, ...s.hist] });
-
-  const buyToast = (b) =>
-    showToast('KOPI: +' + cq(b.qty, b.asset) + ' ' + b.asset + ' в кошелёк', 'Пакет ' + fmt(b.amount) + ' BYN');
-
-  /** Покупка по карте банка-партнёра: сдача уходит в копилку. */
-  const pay = (merchant, a) => {
-    if (!a) return showToast('Неверная сумма', 'Введите сумму, например 6,40');
-    const t = Date.now();
-    const rounded = Math.ceil(a / d.step) * d.step;
-    const up = roundUp(a, d.step, d.mult);
-    let n = { ...d, piggy: d.piggy + up, hist: up ? [{ id: 'r' + t, type: 'round', merchant, a, rounded, roundup: up, status: 'done', t }, ...d.hist] : d.hist };
-    let b = null;
-    if (n.piggy > 0 && n.piggy >= n.threshold) {
-      const r = applyBuy(n, R, t + 1);
-      n = r.s;
-      b = r.p;
-    }
-    setD(n);
-    showToast('Оплата ' + fmt(a) + ' BYN · ' + merchant, up ? 'В копилку KOPI +' + fmt(up) + ' BYN' : 'Сумма круглая, сдачи нет');
-    if (b) later(() => buyToast(b), 1600);
-    return {
-      rows: [
-        { l: 'Покупка · ' + merchant, v: fmt(a) + ' BYN' },
-        { l: 'Округлено до', v: fmt(rounded) + ' BYN' },
-        ...(d.mult > 1 ? [{ l: 'Множитель', v: '×' + d.mult }] : []),
-        { l: 'Списано с карты', v: fmt(a + up) + ' BYN' },
-      ],
-      total: '+' + fmt(up) + ' BYN',
-      note: b
-        ? 'Копилка набрала ' + fmt(b.amount) + ' BYN: куплено ' + cq(b.qty, b.asset) + ' ' + b.asset + ', монеты уже в кошельке.'
-        : up ? 'До покупки ' + d.asset + ' осталось ' + fmt(Math.max(0, d.threshold - n.piggy)) + ' BYN.' : 'Сумма уже круглая, сдачи нет.',
-    };
-  };
-
-  const buyNow = () => {
-    if (d.piggy <= 0) return showToast('Копилка пуста', 'Оплатите картой — сдача купит ' + d.asset);
-    const r = applyBuy(d, R, Date.now());
-    setD(r.s);
-    buyToast(r.p);
-  };
 
   /** Заявка на обмен: сразу «В обработке», через пару секунд «Завершено». */
   const placeOrder = (o) => {
@@ -110,7 +97,7 @@ export default function WhiteBirdApp() {
   };
 
   const ctx = {
-    d, setD, R, tab, go, open, screen, setScreen, setSheet, showToast, pay, buyNow, coinByn, coinUsd,
+    d, setD, k, setK, kp, R, tab, go, open, screen, setScreen, setSheet, showToast, coinByn, coinUsd,
     totalUsd, hide, pushHist, placeOrder, order, later, exPreset, setExPreset,
   };
   const titles = { home: '', ex: 'Криптофиатный обмен', hist: null };
@@ -190,10 +177,9 @@ function ScreenHead({ title, onBack, right }) {
 
 /* ───────────────── Главная ───────────────── */
 function Home({ ctx }) {
-  const { d, setD, R, go, open, setSheet, coinByn, coinUsd, totalUsd, hide, setExPreset } = ctx;
+  const { d, setD, k, kp, R, go, open, setSheet, coinUsd, totalUsd, hide, setExPreset } = ctx;
   const [seg, setSeg] = useState('crypto');
-  const kopiValue = KOPI_ASSETS.reduce((t, a) => t + coinByn(a, d.hold[a].qty), 0);
-  const last = d.hist.find((h) => h.type === 'round');
+  const last = k.ops[0];
   const priceUsd = (a) => usd(priceByn(R, a) / R.usd);
 
   return (
@@ -215,11 +201,11 @@ function Home({ ctx }) {
 
       <button className="w-banner" onClick={() => open('kopi')}>
         <span className="w-banner-text">
-          <b>{d.linked ? 'KOPI: в копилке ' + fmt(d.piggy) + ' из ' + fmt(d.threshold) + ' BYN' : 'Новое: KOPI — крипто со сдачи'}</b>
+          <b>{k.linked ? 'KOPI: со сдачи куплено на ' + fmt(kp.value) + ' BYN' : 'Новое: KOPI — крипто со сдачи'}</b>
           <span>
-            {d.linked
-              ? last ? 'Последнее: ' + last.merchant + ' +' + fmt(last.roundup) + ' BYN → ' + d.asset : 'Оплатите картой — сдача купит ' + d.asset
-              : 'Сдача с покупок по Карте Crypto станет BTC, ETH или USDT'}
+            {k.linked
+              ? last ? 'Последнее: ' + last.merchant + ' +' + fmt(last.roundup) + ' BYN → ' + cq(last.qty, last.asset) + ' ' + last.asset : 'Платите картой Альфа Банка — сдача купит ' + k.asset
+              : 'Сдача с покупок по карте Альфа Банка станет BTC, ETH или USDT'}
           </span>
         </span>
         <span className="w-banner-k">K</span>
@@ -238,7 +224,7 @@ function Home({ ctx }) {
             <span className="w-main"><span className="b">{a}</span><small>{priceUsd(a)}</small></span>
             <span className="w-end">
               <span className="b">{hide(cq(d.bal[a], a))}</span>
-              <small className={d.hold[a]?.qty ? 'acc' : ''}>{d.hold[a]?.qty ? 'из них ' + cq(d.hold[a].qty, a) + ' от KOPI' : hide(usd(coinUsd(a, d.bal[a])))}</small>
+              <small className={kp.h[a]?.qty ? 'acc' : ''}>{kp.h[a]?.qty ? 'из них ' + cq(kp.h[a].qty, a) + ' от KOPI' : hide(usd(coinUsd(a, d.bal[a])))}</small>
             </span>
           </button>
         ))}
@@ -256,19 +242,19 @@ function Home({ ctx }) {
             </button>
           </>
         )}
-        {seg === 'kopi' && (d.linked ? (
+        {seg === 'kopi' && (k.linked ? (
           <>
-            {KOPI_ASSETS.filter((a) => d.hold[a].qty > 0).map((a) => (
+            {KOPI_ASSETS.filter((a) => kp.h[a].qty > 0).map((a) => (
               <button key={a} className="w-row" onClick={() => open('kopi')}>
                 <Coin a={a} />
-                <span className="w-main"><span className="b">{a}</span><small>вложено {fmt(d.hold[a].cost)} BYN</small></span>
-                <span className="w-end"><span className="b">{cq(d.hold[a].qty, a)}</span><small className="acc">{fmt(coinByn(a, d.hold[a].qty))} BYN</small></span>
+                <span className="w-main"><span className="b">{a}</span><small>сдачей вложено {fmt(kp.h[a].cost)} BYN</small></span>
+                <span className="w-end"><span className="b">{cq(kp.h[a].qty, a)}</span><small className="acc">{fmt(kp.val(a))} BYN</small></span>
               </button>
             ))}
             <button className="w-row" onClick={() => open('kopi')}>
               <span className="w-coin k">K</span>
-              <span className="w-main"><span className="b">Копилка</span><small>до покупки {d.asset}</small></span>
-              <span className="w-end"><span className="b">{fmt(d.piggy)} BYN</span><small>куплено на {fmt(kopiValue)} BYN</small></span>
+              <span className="w-main"><span className="b">Карта Альфа Банка •••• {k.card}</span><small>сдача сразу покупает {k.asset}</small></span>
+              <Icon name="right" size={18} className="w-chev" />
             </button>
           </>
         ) : (
@@ -505,12 +491,12 @@ const CAT_FILTER = {
   all: () => true,
   io: (h) => h.type === 'in' || h.type === 'out',
   ex: (h) => h.type === 'ex' || h.type === 'conv',
-  kopi: (h) => h.type === 'round' || h.type === 'buy',
+  kopi: (h) => h.type === 'kopi',
 };
 
 function HistTitle({ ctx }) {
   const { d, setD } = ctx;
-  const cat = d.histCat || 'io';
+  const cat = d.histCat || 'all';
   const [openMenu, setOpenMenu] = useState(false);
   return (
     <div className="w-title-dd">
@@ -532,6 +518,7 @@ function HistTitle({ ctx }) {
 }
 
 function histView(h) {
+  if (h.type === 'kopi') return { coin: h.asset, title: 'KOPI · ' + h.merchant, sub: 'сдача ' + fmt(h.roundup) + ' BYN · Альфа Банк', val: '+ ' + cq(h.qty, h.asset) + ' ' + h.asset, cls: 'pos' };
   if (h.type === 'round') return { icon: 'K', k: true, title: 'Сдача · ' + h.merchant, sub: fmt(h.a) + ' → ' + fmt(h.rounded) + ' BYN', val: '+ ' + fmt(h.roundup) + ' BYN', cls: 'acc' };
   if (h.type === 'buy') return { coin: h.asset, title: 'KOPI · покупка ' + h.asset, sub: 'пакетом на ' + fmt(h.amount) + ' BYN', val: '+ ' + cq(h.qty, h.asset) + ' ' + h.asset, cls: 'pos' };
   const icon = h.type === 'out' ? 'up' : h.type === 'in' ? 'down' : 'swap';
@@ -561,7 +548,7 @@ function StatusIcon({ status }) {
 
 function History({ ctx }) {
   const { d, setSheet, showToast } = ctx;
-  const cat = d.histCat || 'io';
+  const cat = d.histCat || 'all';
   const status = d.histStatus || 'all';
   const list = d.hist.filter(CAT_FILTER[cat]).filter((h) => status === 'all' || (h.status || 'done') === status);
   const groups = [];
@@ -607,114 +594,120 @@ function History({ ctx }) {
 }
 
 /* ───────────────── KOPI ───────────────── */
+/** Перейти в Альфа Банк сразу на экран KOPI — там оплата картой и настройки сдачи. */
+const openAlfa = () => {
+  try { sessionStorage.setItem('kopi.open', 'alfa'); } catch (e) { /* ignore */ }
+  window.location.hash = '/alfa';
+};
+
 function Kopi({ ctx }) {
-  const { d, setD, R, setScreen, setSheet, buyNow, showToast, coinByn, later } = ctx;
+  const { k, setK, R, kp, setScreen, showToast, later } = ctx;
   const [linking, setLinking] = useState(false);
   const [setup, setSetup] = useState(false);
   const [armed, arm] = useArmed();
-  const okCards = d.cards.filter((c) => c.region === 'rb');
+  const set = (patch) => setK((s) => ({ ...s, ...patch }));
   const chip = (items, cur, key, lab) =>
-    items.map((v) => <button key={v} className={v === cur ? 'on' : ''} onClick={() => setD((s) => ({ ...s, [key]: v }))}>{lab(v)}</button>);
+    items.map((v) => <button key={v} className={v === cur ? 'on' : ''} onClick={() => set({ [key]: v })}>{lab(v)}</button>);
 
   const link = () => {
     if (linking) return;
     setLinking(true);
     later(() => {
       setLinking(false);
-      setD((s) => ({ ...s, linked: true }));
-      showToast('KOPI подключён к •••• ' + d.kopiCard, 'Округления начнутся со следующей покупки');
+      set({ linked: true });
+      showToast('KOPI подключён к •••• ' + k.card, 'Сдача с карты Альфа Банка будет приходить сюда');
     }, 1400);
   };
 
-  const value = KOPI_ASSETS.reduce((t, a) => t + coinByn(a, d.hold[a].qty), 0);
-  const invested = KOPI_ASSETS.reduce((t, a) => t + d.hold[a].cost, 0);
-  const pr = invested ? ((value - invested) / invested) * 100 : 0;
+  const held = KOPI_ASSETS.filter((a) => kp.h[a].qty > 0);
 
   return (
     <>
       <ScreenHead title="KOPI · крипто со сдачи" onBack={() => setScreen(null)} />
       <div className="w-body full">
-        {!d.linked ? (
+        {!k.linked ? (
           <div className="w-screen">
             <div className="w-intro">
-              <b>Криптовалюта со сдачи<br />с каждой покупки</b>
-              <span>Карта Crypto уже связывает Mastercard Альфа Банка с вашим кошельком WhiteBird. KOPI округляет каждую покупку по ней вверх, сдача покупает BTC, ETH или USDT.</span>
+              <b>Криптовалюта со сдачи<br />с карты Альфа Банка</b>
+              <span>Платите картой Альфа Банка как обычно. Банк округляет покупку вверх и сразу переводит сдачу сюда — WhiteBird мгновенно покупает на неё BTC, ETH или USDT.</span>
             </div>
             <div className="w-panel">
-              <div className="w-panel-head"><Flag />Карты банков РБ</div>
-              {okCards.map((c) => (
-                <button
-                  key={c.id}
-                  className={'w-card-opt' + (d.kopiCard === c.last ? ' on' : '') + (c.kopi ? '' : ' off')}
-                  onClick={() => (c.kopi ? setD((s) => ({ ...s, kopiCard: c.last })) : showToast('Банк пока не партнёр KOPI', 'Выберите карту Альфа Банка'))}
-                >
-                  <b className={c.brand === 'VISA' ? 'visa' : 'mc'}>{c.brand === 'VISA' ? 'VISA' : <span className="w-mc" />}</b>
-                  <span className="w-main"><span>•••• {c.last} BYN</span><small className={c.kopi ? 'acc' : ''}>{c.kopi ? c.note + ' · партнёр KOPI' : 'Банк не подключён к KOPI'}</small></span>
-                  <span className="w-radio" />
-                </button>
-              ))}
+              <div className="w-panel-head"><Flag />Карта для KOPI</div>
+              <div className="w-card-opt on">
+                <b className="mc"><span className="w-mc" /></b>
+                <span className="w-main"><span>•••• {k.card} BYN</span><small className="acc">Альфа Банк · партнёр KOPI</small></span>
+                <span className="w-radio" />
+              </div>
             </div>
-            <div className="w-example"><span>Кофе 6,40 → 7,00</span><b>+0,60 BYN в BTC</b></div>
+            <div className="w-example"><span>Кофе 6,40 → 7,00</span><b>+0,60 BYN → {k.asset}</b></div>
             <button className="w-btn primary" onClick={link} disabled={linking}>
               {linking && <span className="spinner" />}
-              {linking ? 'Подключаем…' : 'Подключить KOPI к •••• ' + d.kopiCard}
+              {linking ? 'Подключаем…' : 'Подключить KOPI к •••• ' + k.card}
             </button>
-            <span className="w-fine">Данные карты обрабатывает банк-партнёр. WhiteBird получает только сумму и время оплаты.</span>
+            <span className="w-fine">Банк передаёт WhiteBird только сумму сдачи. Данные карты остаются в банке.</span>
           </div>
         ) : (
           <div className="w-screen">
             <div className="w-panel">
               <div className="w-panel-row"><span>Куплено со сдачи</span><span className="w-live"><i style={{ background: R.live ? GREEN : '#7C869A' }} />{R.src}</span></div>
-              <span className="w-big-val">{fmt(value)} BYN</span>
-              <div className="w-panel-row"><span>Вложено {fmt(invested)} BYN</span><b style={{ color: pr >= 0 ? GREEN : RED }}>{invested ? pct(pr) : '—'}</b></div>
-              {KOPI_ASSETS.filter((a) => d.hold[a].cost > 0 || a === d.asset).map((a) => {
-                const c = d.hold[a].cost;
-                const v = coinByn(a, d.hold[a].qty);
+              <span className="w-big-val">{fmt(kp.value)} BYN</span>
+              <div className="w-panel-row"><span>Сдачей вложено {fmt(kp.invested)} BYN</span><b style={{ color: kp.pr >= 0 ? GREEN : RED }}>{kp.invested ? pct(kp.pr) : '—'}</b></div>
+              {held.map((a) => {
+                const c = kp.h[a].cost;
+                const v = kp.val(a);
                 const dd = c ? ((v - c) / c) * 100 : 0;
                 return (
                   <div key={a} className="w-hold">
                     <Coin a={a} size={34} />
-                    <span className="w-main"><span>{a}</span><small>{cq(d.hold[a].qty, a)} {a} · {fmt(Math.round(priceByn(R, a) * 100))} BYN</small></span>
-                    <span className="w-end"><span className="b">{fmt(v)} BYN</span><small style={{ color: c ? (dd >= 0 ? GREEN : RED) : undefined }}>{c ? pct(dd) : 'пока пусто'}</small></span>
+                    <span className="w-main"><span>{a}</span><small>{cq(kp.h[a].qty, a)} {a} · {fmt(Math.round(priceByn(R, a) * 100))} BYN</small></span>
+                    <span className="w-end"><span className="b">{fmt(v)} BYN</span><small style={{ color: dd >= 0 ? GREEN : RED }}>{pct(dd)}</small></span>
                   </div>
                 );
               })}
             </div>
 
             <div className="w-panel">
-              <div className="w-panel-row"><span>Копилка сдачи</span><span>Карта •••• {d.kopiCard}</span></div>
-              <div className="w-panel-row big"><b>{fmt(d.piggy)} BYN</b><span>покупка на {fmt(d.threshold)}</span></div>
-              <div className="w-progress"><div style={{ width: Math.min(100, (d.piggy / d.threshold) * 100) + '%' }} /></div>
-              <div className="w-two">
-                <button className="w-btn primary sm" onClick={() => setSheet('pay')}>Оплата картой</button>
-                <button className="w-btn soft sm" onClick={buyNow} disabled={d.piggy <= 0}>{d.piggy > 0 ? 'Купить на ' + fmt(d.piggy) : 'Купить ' + d.asset}</button>
-              </div>
-              <span className="w-fine left">Оплата эмулирует покупку по карте банка-партнёра</span>
+              <div className="w-panel-row"><span>Сдача приходит с карты</span><span>Альфа Банк •••• {k.card}</span></div>
+              <div className="w-example inset"><span>Покупка → сдача → {k.asset}</span><b>сразу</b></div>
+              <button className="w-btn primary sm" onClick={openAlfa}>Оплатить картой в Альфа Банке</button>
+            </div>
+
+            <div className="w-panel">
+              <b className="w-panel-title">Последние покупки со сдачи</b>
+              {k.ops.length === 0 ? (
+                <span className="w-fine left">Пока пусто. Оплатите что-нибудь картой Альфа Банка — монета появится здесь через секунду.</span>
+              ) : (
+                k.ops.slice(0, 5).map((o) => (
+                  <div key={o.id} className="w-hold">
+                    <Coin a={o.asset} size={34} />
+                    <span className="w-main"><span>{o.merchant}</span><small>сдача {fmt(o.roundup)} BYN · {dayLabel(o.t)}, {timeOf(o.t)}</small></span>
+                    <span className="w-end"><span className="b pos">+{cq(o.qty, o.asset)}</span><small>{o.asset}</small></span>
+                  </div>
+                ))
+              )}
             </div>
 
             <div className={'w-panel w-fold' + (setup ? ' open' : '')}>
               <button className="w-fold-head" onClick={() => setSetup(!setup)} aria-expanded={setup}>
-                <span className="w-main"><b className="w-panel-title">Настройки покупки</b><small>{d.asset} · до {fmtInt(d.step)} BYN · ×{d.mult} · пакет {fmtInt(d.threshold)} BYN</small></span>
+                <span className="w-main"><b className="w-panel-title">Настройки покупки</b><small>{k.asset} · до {fmtInt(k.step)} BYN · ×{k.mult}</small></span>
                 <Icon name="chevDown" size={20} stroke={2.4} className="w-fold-chev" />
               </button>
               {setup && (<>
               <span className="w-label">Что покупать</span>
               <div className="w-assets">
                 {KOPI_ASSETS.map((a) => (
-                  <button key={a} className={d.asset === a ? 'on' : ''} onClick={() => setD((s) => ({ ...s, asset: a }))}>
+                  <button key={a} className={k.asset === a ? 'on' : ''} onClick={() => set({ asset: a })}>
                     <Coin a={a} size={32} /><b>{a}</b><small>{KOPI_DESC[a]}</small>
                   </button>
                 ))}
               </div>
               <span className="w-label">Округлять до</span>
-              <div className="w-chips">{chip([100, 500, 1000], d.step, 'step', (v) => fmtInt(v) + ' BYN')}</div>
+              <div className="w-chips">{chip([100, 500, 1000], k.step, 'step', (v) => fmtInt(v) + ' BYN')}</div>
               <span className="w-label">Множитель сдачи</span>
-              <div className="w-chips">{chip([1, 2, 5], d.mult, 'mult', (v) => '×' + v)}</div>
-              <span className="w-label">Покупать пакетом, когда в копилке</span>
-              <div className="w-chips">{chip([1000, 2000, 5000], d.threshold, 'threshold', (v) => fmtInt(v) + ' BYN')}</div>
+              <div className="w-chips">{chip([1, 2, 5], k.mult, 'mult', (v) => '×' + v)}</div>
               </>)}
             </div>
-            <button className="w-reset" onClick={() => arm(() => { setD((s) => ({ ...s, linked: false, piggy: 0 })); showToast('KOPI отключён', 'Купленные монеты остались в кошельке'); })}>
+            <button className="w-reset" onClick={() => arm(() => { set({ linked: false }); showToast('KOPI отключён', 'Купленные монеты остались в кошельке'); })}>
               {armed ? 'Нажмите ещё раз, чтобы отключить' : 'Отключить KOPI'}
             </button>
           </div>
@@ -757,7 +750,7 @@ function Profile({ ctx }) {
             <MenuRow icon="shield" label="Безопасность" onClick={() => setSheet('security')} />
             <MenuRow icon="bell" label="Уведомления" onClick={() => setSheet('notifset')} />
             <MenuRow icon="card" label="Способы оплаты" onClick={() => open('methods')} />
-            <MenuRow kopi label="KOPI · крипто со сдачи" sub={d.linked ? 'Подключён' : 'Не подключён'} onClick={() => open('kopi')} />
+            <MenuRow kopi label="KOPI · крипто со сдачи" sub={k.linked ? 'Подключён · Альфа Банк •••• ' + k.card : 'Не подключён'} onClick={() => open('kopi')} />
             <MenuRow icon="gear" label="Настройки" onClick={() => setSheet('settings')} />
             <MenuRow icon="doc" label="Информация" onClick={() => setSheet('info')} />
           </div>
@@ -788,7 +781,7 @@ function Methods({ ctx }) {
   const shown = full ? cards : cards.slice(0, 3);
 
   const remove = (c) => {
-    if (c.last === d.kopiCard && d.linked) return showToast('Карта подключена к KOPI', 'Сначала отключите KOPI или выберите другую карту');
+    if (c.last === ctx.k.card && ctx.k.linked) return showToast('Карта подключена к KOPI', 'Сначала отключите KOPI или выберите другую карту');
     setD((s) => ({ ...s, cards: s.cards.filter((x) => x.id !== c.id) }));
     showToast('Карта отвязана', c.brand + ' •••• ' + c.last);
   };
@@ -890,7 +883,6 @@ function SheetHost({ ctx, sheet }) {
     coin: [arg ? COINS[arg]?.name : '', arg],
     fiatusd: ['Счёт в USD', 'Электронный счёт'],
     notif: ['Уведомления', ''],
-    pay: ['Покупка по карте', 'Эмулятор: так банк-партнёр сообщает об оплате'],
     histfilter: ['Фильтр', 'Статус операции'],
     op: ['Операция', ''],
     support: ['Поддержка', 'Обычно отвечаем за 2 минуты'],
@@ -916,7 +908,6 @@ function SheetHost({ ctx, sheet }) {
       {key === 'coin' && COINS[arg] && <CoinSheet ctx={ctx} a={arg} />}
       {key === 'fiatusd' && <FiatUsdSheet ctx={ctx} />}
       {key === 'notif' && <NotifSheet ctx={ctx} />}
-      {key === 'pay' && <PaySheet ctx={ctx} />}
       {key === 'histfilter' && <HistFilterSheet ctx={ctx} />}
       {key === 'op' && <OpSheet ctx={ctx} id={arg} />}
       {key === 'support' && <SupportSheet />}
@@ -1112,7 +1103,7 @@ function CoinSheet({ ctx, a }) {
         <b>{cq(d.bal[a], a)} {a}</b>
         <span>≈ {usd(coinUsd(a, d.bal[a]))} · 1 {a} = {fmt(Math.round(priceByn(R, a) * 100))} BYN</span>
       </div>
-      {d.hold[a]?.qty > 0 && <div className="w-info-row"><span>Куплено через KOPI</span><b className="acc">{cq(d.hold[a].qty, a)} {a}</b></div>}
+      {ctx.kp.h[a]?.qty > 0 && <div className="w-info-row"><span>Куплено через KOPI</span><b className="acc">{cq(ctx.kp.h[a].qty, a)} {a}</b></div>}
       <div className="w-two">
         <button className="w-btn primary sm" onClick={() => { setExPreset({ k: Date.now(), dir: 'f2c', asset: a }); go('ex'); }}>Купить</button>
         <button className="w-btn soft sm" onClick={() => { setExPreset({ k: Date.now(), dir: 'c2f', asset: a }); go('ex'); }}>Продать</button>
@@ -1143,29 +1134,6 @@ function NotifSheet({ ctx }) {
         {d.hist.slice(0, 10).map((h) => <HistRow key={h.id} h={h} onClick={() => setSheet('op:' + h.id)} />)}
       </div>
       <button className="w-btn soft" onClick={() => setD((s) => ({ ...s, readAt: Date.now() }))}>Отметить все прочитанными</button>
-    </>
-  );
-}
-
-function PaySheet({ ctx }) {
-  const { d, pay } = ctx;
-  const [amount, setAmount] = useState('6,40');
-  const [receipt, setReceipt] = useState(null);
-  return (
-    <>
-      <div className="w-info-row"><span>Карта •••• {d.kopiCard} · BYN</span><b className="acc">до {fmtInt(d.step)} BYN{d.mult > 1 ? ' ×' + d.mult : ''} → {d.asset}</b></div>
-      <AmountField value={amount} onChange={setAmount} cur="BYN" />
-      <div className="w-chips wrap">
-        {PRESETS.map(([n, a]) => <button key={n} onClick={() => { setAmount(fmt(a)); setReceipt(pay(n, a)); }}>{n} {fmt(a)}</button>)}
-      </div>
-      <button className="w-btn primary" onClick={() => setReceipt(pay('Покупка', parseAmount(amount)) || null)}>Оплатить</button>
-      {receipt && (
-        <div className="w-receipt">
-          {receipt.rows.map((r) => <div key={r.l}><span>{r.l}</span><b>{r.v}</b></div>)}
-          <div className="w-receipt-total"><b>В копилку KOPI</b><b className="acc">{receipt.total}</b></div>
-          <span>{receipt.note}</span>
-        </div>
-      )}
     </>
   );
 }

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { fmt, fmtInt, pct, qty, when, roundUp } from '../shared/format.js';
+import { kq } from '../shared/kopi.js';
+import { useArmed } from '../shared/hooks.js';
 import { Icon, Solid } from '../shared/icons.jsx';
 import { Switch } from '../shared/ui.jsx';
 import { ASSETS, ASSET_KEYS, FAVS, CAT_COLORS, REG_TYPES, PRODUCTS, nextDate, daysUntil } from './model.js';
@@ -99,9 +101,8 @@ function ProdRow({ icon, top, main, sub, subColor, onClick, plain }) {
 /* ───────────── Главная = Мои продукты ───────────── */
 // Повторяет главную Альфа Банка: те же четыре секции. KOPI — строка-счёт в «Картах и счетах».
 export function Home({ ctx }) {
-  const { d, R, p, push, setSheet } = ctx;
-  const total = d.balance + Math.round(d.usd * R.usd) + p.value + d.piggy;
-  const A = ASSETS[d.asset];
+  const { d, k, R, p, push, setSheet } = ctx;
+  const total = d.balance + Math.round(d.usd * R.usd);
 
   return (
     <div className="a-page">
@@ -126,9 +127,10 @@ export function Home({ ctx }) {
           <ProdRow icon={<span className="a-cardart gold">VISA</span>} top="4.2702 | Текущий счет" main="0 €" onClick={() => setSheet('account:eur')} />
           <ProdRow
             icon={<span className="a-sq kopi">K</span>}
-            top="KOPI | Крипто со сдачи"
-            main={<>{fmt(p.value + d.piggy)} <Byn /></>}
-            sub={'Копилка ' + fmt(d.piggy) + ' из ' + fmtInt(d.threshold) + ' → ' + A.code}
+            top="KOPI | Сдача в крипто · WhiteBird"
+            main={k.linked ? <>{fmt(p.value)} <Byn /></> : 'Не подключён'}
+            plain={!k.linked}
+            sub={k.linked ? (k.ops.length ? 'Покупок со сдачи: ' + k.ops.length + ' · ' + k.asset : 'Оплатите картой — сдача купит ' + k.asset) : 'Подключить за 1 шаг'}
             subColor="var(--purple)"
             onClick={() => push({ id: 'kopi' })}
           />
@@ -146,7 +148,7 @@ export function Home({ ctx }) {
 export function Payments({ ctx }) {
   const { d, push, setSheet } = ctx;
   const favs = [...FAVS, ...(d.myFavs || [])];
-  const pp = Math.min(100, (d.piggy / d.threshold) * 100);
+  const { k, p } = ctx;
   const subs = d.regs.filter((r) => r.active && !r.hidden);
   return (
     <div className="a-page">
@@ -192,9 +194,9 @@ export function Payments({ ctx }) {
         <button className="a-promo kopi" onClick={() => push({ id: 'kopi' })}>
           <span className="a-promo-text">
             <b>Сдача в крипто · KOPI</b>
-            <span>Копилка {fmt(d.piggy)} из {fmtInt(d.threshold)} BYN</span>
+            <span>{k.linked ? 'В WhiteBird ' + fmt(p.value) + ' BYN · ' + k.asset : 'Сдача с покупок → криптовалюта в WhiteBird'}</span>
           </span>
-          <Ring value={pp} size={52} label={Math.round(pp) + '%'} />
+          <span className="a-sq kopi">K</span>
         </button>
 
         <h2 className="a-h2">Регулярные</h2>
@@ -308,13 +310,13 @@ function Empty({ icon, title, text }) {
 
 /* ───────────── Диалоги ───────────── */
 const NEWS = [
-  { t: 'KOPI: крипто со сдачи', s: 'Округляйте покупки и копите в BTC, ETH или консервативном инструменте.', kopi: true },
+  { t: 'KOPI: крипто со сдачи', s: 'Сдача с каждой покупки сразу уходит в WhiteBird и покупает BTC, ETH или USDT.', kopi: true },
   { t: 'Мои подписки', s: 'Подписки, автоплатежи и счета — в одном месте с календарём списаний.' },
   { t: 'Карта Crypto Mastercard', s: 'Выводите криптовалюту из WhiteBird и платите в любом магазине.' },
 ];
 
 export function Dialogs({ ctx }) {
-  const { d, commit, push, setSheet } = ctx;
+  const { d, k, commit, push, setSheet } = ctx;
   const [tab, setTab] = useState('apps');
   const notifs = [
     ...d.regs
@@ -322,10 +324,10 @@ export function Dialogs({ ctx }) {
       .map((r) => ({ r, next: nextDate(r) }))
       .filter((x) => x.next && daysUntil(x.next) <= 3)
       .map(({ r, next }) => ({ id: 'n' + r.id, t: Date.now(), title: fmt(r.amt) + ' BYN, ' + REG_TYPES[r.type].label.toLowerCase() + ' ' + r.name, text: 'Списание ' + (daysUntil(next) === 0 ? 'сегодня' : 'через ' + daysUntil(next) + ' дн.'), onClick: () => setSheet('reg:' + r.id), unread: true })),
-    ...d.hist.slice(0, 8).map((h) => ({
-      id: h.id, t: h.t, unread: h.t > d.readAt, onClick: () => push({ id: 'kopi' }), kopi: true,
-      title: h.type === 'round' ? 'KOPI: сдача +' + fmt(h.roundup) + ' BYN' : 'KOPI: куплено ' + (h.asset === 'SAFE' ? 'на ' + fmt(h.amount) + ' BYN' : qty(h.qty, h.asset) + ' ' + h.asset),
-      text: (h.type === 'round' ? h.merchant + ': ' + fmt(h.a) + ' → ' + fmt(h.rounded) + ' BYN' : 'Пакетная покупка') + ' · ' + when(h.t),
+    ...k.ops.slice(0, 8).map((o) => ({
+      id: o.id, t: o.t, unread: o.t > d.readAt, onClick: () => push({ id: 'kopi' }), kopi: true,
+      title: 'KOPI: +' + kq(o.qty, o.asset) + ' ' + o.asset + ' в WhiteBird',
+      text: o.merchant + ': сдача ' + fmt(o.roundup) + ' BYN · ' + when(o.t),
     })),
   ];
   const unread = notifs.filter((n) => n.unread).length;
@@ -460,64 +462,129 @@ export function Chat({ ctx }) {
 }
 
 /* ───────────── KOPI ───────────── */
+/** Открыть WhiteBird сразу на экране KOPI — там видно, что сдача пришла и купила монету. */
+export const openWhiteBird = () => {
+  try { sessionStorage.setItem('kopi.open', '1'); } catch (e) { /* ignore */ }
+  window.location.hash = '/whitebird';
+};
+
 export function Kopi({ ctx }) {
-  const { d, R, p, commit, buyNow, reset, resetArmed, setSheet, pop } = ctx;
-  const A = ASSETS[d.asset];
-  const pp = Math.min(100, (d.piggy / d.threshold) * 100);
-  const holdRows = ASSET_KEYS.filter((a) => d.hold[a].cost > 0 || a === d.asset);
-  // Пример на чашке кофе пересчитывается вместе с настройками; оценка в месяц — средняя сдача × 40 покупок.
-  const sample = roundUp(640, d.step, d.mult);
-  const monthly = Math.round((40 * d.step * d.mult) / 2);
-  const catOf = Object.fromEntries(d.ops.map((o) => ['r' + o.id.slice(1), o.cat]));
+  const { d, k, setK, R, p, reset, resetArmed, setSheet, pop, showToast } = ctx;
   const [allHist, setAllHist] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const [offArmed, armOff] = useArmed();
+  const A = ASSETS[k.asset];
+  // Пример на чашке кофе пересчитывается вместе с настройками; оценка в месяц — средняя сдача × 40 покупок.
+  const sample = roundUp(640, k.step, k.mult);
+  const monthly = Math.round((40 * k.step * k.mult) / 2);
+  const catOf = Object.fromEntries(d.ops.map((o) => ['k' + o.id.slice(1), o.cat]));
+  const held = ASSET_KEYS.filter((a) => p.h[a].qty > 0);
+  const set = (patch) => setK((s) => ({ ...s, ...patch }));
+
+  const link = () => {
+    if (linking) return;
+    setLinking(true);
+    setTimeout(() => {
+      setLinking(false);
+      set({ linked: true });
+      showToast('KOPI подключён', 'Карта ··' + k.card + ' связана с кошельком WhiteBird');
+    }, 1200);
+  };
+
+  const pick = (
+    <>
+      <h2 className="a-h2">Во что вкладывать</h2>
+      <div className="a-pick">
+        {ASSET_KEYS.map((a) => (
+          <button key={a} className={'a-pick-tile' + (k.asset === a ? ' on' : '')} onClick={() => set({ asset: a })} aria-pressed={k.asset === a}>
+            <span className="a-coin md" style={{ background: ASSETS[a].bg }}>{ASSETS[a].sym}</span>
+            <b>{ASSETS[a].name}</b>
+            <small>{ASSETS[a].risk}</small>
+            {k.asset === a && <span className="a-pick-ok"><Icon name="check" size={11} stroke={3.5} /></span>}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+
+  // Цепочка, ради которой всё и затевалось: карта Альфы → сдача → WhiteBird → монета.
+  const flow = (
+    <div className="a-flow">
+      <div className="a-flow-step">
+        <span className="a-sq red sm"><Logo size={18} /></span>
+        <b>Карта ··{k.card}</b>
+        <small>Кофе {fmt(640)}</small>
+      </div>
+      <Icon name="right" size={16} className="a-flow-arr" />
+      <div className="a-flow-step">
+        <span className="a-sq kopi sm">K</span>
+        <b>Сдача</b>
+        <small>+{fmt(sample)} BYN</small>
+      </div>
+      <Icon name="right" size={16} className="a-flow-arr" />
+      <div className="a-flow-step">
+        <span className="a-sq sm" style={{ background: '#2470FF', color: '#fff' }}>W</span>
+        <b>WhiteBird</b>
+        <small>покупает {A.code}</small>
+      </div>
+    </div>
+  );
+
+  if (!k.linked) {
+    return (
+      <>
+        <BackHead title="KOPI · крипто со сдачи" onBack={pop} />
+        <div className="a-layer-body">
+          <div className="a-screen">
+            <section className="a-kopi-intro">
+              <b>Сдача с каждой покупки — сразу в криптовалюту</b>
+              <span>Платите картой Альфа Банка как обычно. Сумма округляется вверх, разница мгновенно уходит в ваш кошелёк WhiteBird и покупает выбранную монету.</span>
+            </section>
+            {flow}
+            {pick}
+            <button className="a-btn red" onClick={link} disabled={linking}>
+              {linking ? 'Подключаем WhiteBird…' : 'Подключить KOPI к карте ··' + k.card}
+            </button>
+            <p className="a-kopi-fine">Покупку проводит WhiteBird — резидент ПВТ. Банк передаёт только сумму сдачи.</p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <BackHead title="KOPI · крипто со сдачи" onBack={pop} right={<span className="a-live-dot" title={R.src} style={{ background: R.live ? GREEN : '#A0A8B4' }} />} />
       <div className="a-layer-body">
         <div className="a-screen">
           <section className="a-kopi-hero">
-            <span className="a-muted-inv">Портфель со сдачи · {R.src}</span>
+            <span className="a-muted-inv">В кошельке WhiteBird · {R.src}</span>
             <b>{fmt(p.value)} BYN</b>
-            <div className="a-kh-row"><span>Вложено {fmt(p.invested)} BYN</span><span className="a-kh-pr">{p.invested ? pct(p.pr) : '—'}</span></div>
-            <div className="a-holds">
-              {holdRows.map((a) => {
-                const c = d.hold[a].cost;
-                const v = p.val(a);
-                const dd = c ? ((v - c) / c) * 100 : 0;
-                return (
-                  <div key={a} className="a-hold">
-                    <span className="a-coin lg" style={{ background: ASSETS[a].bg }}>{ASSETS[a].sym}</span>
-                    <span className="a-row-main">
-                      <span>{ASSETS[a].name}</span>
-                      <small>{a === 'SAFE' ? 'без изменения курса' : qty(d.hold[a].qty, a) + ' ' + a + ' · ' + Math.round(R[a]).toLocaleString('ru-RU') + ' BYN'}</small>
-                    </span>
-                    <span className="a-row-end"><b>{fmt(v)} BYN</b><small style={{ color: c ? (dd >= 0 ? '#7CF29A' : '#FFB4AE') : undefined }}>{c ? pct(dd) : 'пока пусто'}</small></span>
-                  </div>
-                );
-              })}
-            </div>
+            <div className="a-kh-row"><span>Сдачей вложено {fmt(p.invested)} BYN</span><span className="a-kh-pr">{p.invested ? pct(p.pr) : '—'}</span></div>
+            {held.length > 0 && (
+              <div className="a-holds">
+                {held.map((a) => {
+                  const c = p.h[a].cost;
+                  const v = p.val(a);
+                  const dd = c ? ((v - c) / c) * 100 : 0;
+                  return (
+                    <div key={a} className="a-hold">
+                      <span className="a-coin lg" style={{ background: ASSETS[a].bg }}>{ASSETS[a].sym}</span>
+                      <span className="a-row-main"><span>{ASSETS[a].name}</span><small>{kq(p.h[a].qty, a)} {a}</small></span>
+                      <span className="a-row-end"><b>{fmt(v)} BYN</b><small style={{ color: dd >= 0 ? '#7CF29A' : '#FFB4AE' }}>{pct(dd)}</small></span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
-
-          <section className="a-card a-piggy">
-            <Ring value={pp} size={68} label={Math.round(pp) + '%'} />
-            <div><b>{fmt(d.piggy)} BYN</b><span className="a-muted">из {fmt(d.threshold)} BYN → покупка {A.code}</span></div>
-          </section>
+          {flow}
           <div className="a-two">
-            <button className="a-btn red" onClick={buyNow} disabled={d.piggy <= 0}>{d.piggy > 0 ? 'Купить на ' + fmt(d.piggy) : 'Копилка пуста'}</button>
-            <button className="a-btn gray" onClick={() => setSheet('shop')}>Оплатить картой</button>
+            <button className="a-btn red" onClick={() => setSheet('shop')}>Оплатить картой</button>
+            <button className="a-btn gray" onClick={openWhiteBird}>Открыть WhiteBird</button>
           </div>
 
-          <h2 className="a-h2">Во что вкладывать</h2>
-          <div className="a-pick">
-            {ASSET_KEYS.map((a) => (
-              <button key={a} className={'a-pick-tile' + (d.asset === a ? ' on' : '')} onClick={() => commit((s) => ({ ...s, asset: a }))} aria-pressed={d.asset === a}>
-                <span className="a-coin md" style={{ background: ASSETS[a].bg }}>{ASSETS[a].sym}</span>
-                <b>{a === 'SAFE' ? 'BYN' : ASSETS[a].name}</b>
-                <small>{RISK[a]}</small>
-                {d.asset === a && <span className="a-pick-ok"><Icon name="check" size={11} stroke={3.5} /></span>}
-              </button>
-            ))}
-          </div>
+          {pick}
 
           <h2 className="a-h2">Как копится сдача</h2>
           <div className="a-card a-tune">
@@ -526,48 +593,42 @@ export function Kopi({ ctx }) {
               <span className="a-row-main"><span>Кофе {fmt(640)} BYN</span><small>спишется {fmt(640 + sample)} BYN</small></span>
               <b className="k">+{fmt(sample)}</b>
             </div>
-            <Tune label="Округлять до" items={[100, 500, 1000]} cur={d.step} lab={(v) => fmtInt(v) + ' BYN'} set={(v) => commit((s) => ({ ...s, step: v }))} />
-            <Tune label="Множитель сдачи" items={[1, 2, 5]} cur={d.mult} lab={(v) => '×' + v} set={(v) => commit((s) => ({ ...s, mult: v }))} />
-            <Tune label="Покупать, когда в копилке" items={[1000, 2000, 5000]} cur={d.threshold} lab={(v) => fmtInt(v) + ' BYN'} set={(v) => commit((s) => ({ ...s, threshold: v }))} />
+            <Tune label="Округлять до" items={[100, 500, 1000]} cur={k.step} lab={(v) => fmtInt(v) + ' BYN'} set={(v) => set({ step: v })} />
+            <Tune label="Множитель сдачи" items={[1, 2, 5]} cur={k.mult} lab={(v) => '×' + v} set={(v) => set({ mult: v })} />
             <span className="a-tune-note">≈ {fmt(monthly)} BYN в месяц при 40 покупках</span>
           </div>
 
-          <button className="a-card a-row solo" onClick={() => setSheet('wallet')}>
-            <span className="a-sq sm" style={{ background: '#2470FF', color: '#fff' }}>W</span>
-            <span className="a-row-main"><span>Хранится в WhiteBird</span><small>Покупку проводит резидент ПВТ</small></span>
-            <Icon name="right" size={18} className="a-chev" />
-          </button>
-
           <h2 className="a-h2">Сдача и покупки</h2>
-          <div className="a-card a-list">
-            {d.hist.slice(0, allHist ? 12 : 3).map((h) => (h.type === 'round' ? (
-              <div key={h.id} className="a-row static">
-                <span className="a-reg-ic" style={{ background: CAT_COLORS[catOf[h.id]] || '#8A96A8' }}>{h.merchant[0]}</span>
-                <span className="a-row-main"><span>{h.merchant}</span><small>{fmt(h.a)} → {fmt(h.rounded)} BYN · {when(h.t)}</small></span>
-                <b className="k">+{fmt(h.roundup)}</b>
-              </div>
-            ) : (
-              <div key={h.id} className="a-row static">
-                <span className="a-coin lg" style={{ background: ASSETS[h.asset].bg }}>{ASSETS[h.asset].sym}</span>
-                <span className="a-row-main"><span>Покупка {h.asset === 'SAFE' ? 'BYN-инструмента' : h.asset}</span><small>{h.asset === 'SAFE' ? 'пакетом' : qty(h.qty, h.asset) + ' ' + h.asset} · {when(h.t)}</small></span>
-                <b>{fmt(h.amount)} BYN</b>
-              </div>
-            )))}
-            {d.hist.length > 3 && (
-              <button className="a-more" onClick={() => setAllHist(!allHist)} aria-expanded={allHist}>
-                {allHist ? 'Свернуть' : 'Ещё ' + (Math.min(12, d.hist.length) - 3)}
-                <Icon name="chevDown" size={16} stroke={2.6} style={{ transform: allHist ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
-              </button>
-            )}
-          </div>
+          {k.ops.length === 0 ? (
+            <div className="a-card a-kopi-empty">
+              <span>Пока пусто. Оплатите что-нибудь картой — сдача сразу появится здесь и в WhiteBird.</span>
+            </div>
+          ) : (
+            <div className="a-card a-list">
+              {k.ops.slice(0, allHist ? 20 : 3).map((o) => (
+                <div key={o.id} className="a-row static">
+                  <span className="a-reg-ic" style={{ background: CAT_COLORS[catOf[o.id]] || '#8A96A8' }}>{o.merchant[0]}</span>
+                  <span className="a-row-main"><span>{o.merchant}</span><small>{fmt(o.a)} → {fmt(o.a + o.roundup)} BYN · {when(o.t)}</small></span>
+                  <span className="a-row-end"><b className="k">+{fmt(o.roundup)}</b><small>{kq(o.qty, o.asset)} {o.asset}</small></span>
+                </div>
+              ))}
+              {k.ops.length > 3 && (
+                <button className="a-more" onClick={() => setAllHist(!allHist)} aria-expanded={allHist}>
+                  {allHist ? 'Свернуть' : 'Ещё ' + (Math.min(20, k.ops.length) - 3)}
+                  <Icon name="chevDown" size={16} stroke={2.6} style={{ transform: allHist ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+                </button>
+              )}
+            </div>
+          )}
+          <button className="a-reset" onClick={() => armOff(() => { set({ linked: false }); showToast('KOPI отключён', 'Монеты остались в кошельке WhiteBird'); })}>
+            {offArmed ? 'Нажмите ещё раз, чтобы отключить' : 'Отключить KOPI'}
+          </button>
           <button className="a-reset" onClick={reset}>{resetArmed ? 'Нажмите ещё раз, чтобы сбросить' : 'Начать демо заново'}</button>
         </div>
       </div>
     </>
   );
 }
-
-const RISK = { BTC: 'Высокий риск', ETH: 'Средний риск', SAFE: 'Без скачков' };
 
 /** Строка настройки: подпись и сегменты, всё на виду — без раскрытия. */
 function Tune({ label, items, cur, lab, set }) {

@@ -3,7 +3,8 @@ import { fmt, fmtInt, qty, when, parseAmount, roundUp } from '../shared/format.j
 import { Icon } from '../shared/icons.jsx';
 import { Sheet, Switch } from '../shared/ui.jsx';
 import { ASSETS, ASSET_KEYS, FAVS, PRESETS, PRODUCTS, BRANCHES, CONTACTS, CAT_COLORS, REG_TYPES, nextDate, daysUntil } from './model.js';
-import { RegIcon } from './screens.jsx';
+import { RegIcon, openWhiteBird } from './screens.jsx';
+import { kq } from '../shared/kopi.js';
 import { per } from './regular.jsx';
 
 const EXTRA_TPL = {
@@ -155,13 +156,13 @@ function TopupForm({ ctx }) {
 
 /* ── Продукты ── */
 function ProductsSheet({ ctx }) {
-  const { d, setSheet } = ctx;
+  const { d, k, p, setSheet } = ctx;
   return (
     <>
       <div className="a-list flat">
         <div className="a-row static"><span className="a-cardthumb" /><span className="a-row-main"><span>Альфа-Карта Classic ··7781</span><small>{fmt(d.balance)} BYN</small></span></div>
         <div className="a-row static"><span className="a-cardthumb visa" /><span className="a-row-main"><span>Счёт в USD ··4402</span><small>{fmt(d.usd)} $</small></span></div>
-        <div className="a-row static"><span className="a-reg-ic" style={{ background: '#8F5CFF' }}>K</span><span className="a-row-main"><span>KOPI · копилка сдачи</span><small>{fmt(d.piggy)} BYN до покупки</small></span></div>
+        <div className="a-row static"><span className="a-reg-ic" style={{ background: '#8F5CFF' }}>K</span><span className="a-row-main"><span>KOPI · сдача в WhiteBird</span><small>{k.linked ? fmt(p.value) + ' BYN в криптовалюте' : 'Не подключён'}</small></span></div>
         {d.products.map((id) => {
           const p = PRODUCTS.find((x) => x.id === id) || { name: (d.offerNames || {})[id] || 'Заявка', color: '#6B3BD6', glyph: '✓' };
           return (
@@ -224,14 +225,14 @@ function NotifSheet({ ctx }) {
             </span>
           </button>
         ))}
-        {d.hist.slice(0, 6).map((h) => (
-          <button key={h.id} className="a-row" onClick={() => ctx.push({ id: 'kopi' })}>
+        {ctx.k.ops.slice(0, 6).map((o) => (
+          <button key={o.id} className="a-row" onClick={() => ctx.push({ id: 'kopi' })}>
             <span className="a-reg-ic" style={{ background: '#8F5CFF' }}>K</span>
             <span className="a-row-main">
-              <span>{h.type === 'round' ? 'Сдача +' + fmt(h.roundup) + ' BYN' : 'Куплено ' + (h.asset === 'SAFE' ? 'на ' + fmt(h.amount) + ' BYN' : qty(h.qty, h.asset) + ' ' + h.asset)}</span>
-              <small>{h.type === 'round' ? h.merchant + ': ' + fmt(h.a) + ' → ' + fmt(h.rounded) + ' BYN' : 'Пакетная покупка KOPI'} · {when(h.t)}</small>
+              <span>+{kq(o.qty, o.asset)} {o.asset} в WhiteBird</span>
+              <small>{o.merchant}: сдача {fmt(o.roundup)} BYN · {when(o.t)}</small>
             </span>
-            {h.t > d.readAt && <span className="a-unread" />}
+            {o.t > d.readAt && <span className="a-unread" />}
           </button>
         ))}
       </div>
@@ -514,7 +515,7 @@ function TaxesSheet({ ctx }) {
 
 /* ── Поиск ── */
 function SearchSheet({ ctx }) {
-  const { go, push, setSheet, buyNow } = ctx;
+  const { go, push, setSheet } = ctx;
   const [q, setQ] = useState('');
   const items = [
     ['Мои подписки', 'repeat', () => push({ id: 'subs' })],
@@ -524,7 +525,7 @@ function SearchSheet({ ctx }) {
     ['Обмен валюты', 'swap', () => setSheet('exchange')],
     ['Коммунальные платежи', 'home', () => setSheet('utilities')],
     ['KOPI: настройки сдачи', 'trend', () => push({ id: 'kopi' })],
-    ['Купить криптовалюту сейчас', 'trend', () => { setSheet(null); buyNow(); }],
+    ['Открыть WhiteBird', 'trend', openWhiteBird],
     ['История операций', 'clock', () => go('hist')],
     ['Отделения и банкоматы', 'pin', () => setSheet('map')],
     ['Оформить продукт', 'grid', () => setSheet('product')],
@@ -680,21 +681,20 @@ function AddMenuSheet({ ctx }) {
 
 /* ── Прочее ── */
 function WalletSheet({ ctx }) {
-  const { d, R, p, showToast } = ctx;
+  const { R, p } = ctx;
   return (
     <>
       <div className="a-list flat">
-        {ASSET_KEYS.filter((a) => d.hold[a].cost > 0).map((a) => (
+        {ASSET_KEYS.filter((a) => p.h[a].qty > 0).map((a) => (
           <div key={a} className="a-row static">
             <span className="a-coin lg" style={{ background: ASSETS[a].bg }}>{ASSETS[a].sym}</span>
-            <span className="a-row-main"><span>{ASSETS[a].name}</span><small>{a === 'SAFE' ? fmt(d.hold.SAFE.cost) + ' BYN' : qty(d.hold[a].qty, a) + ' ' + a}</small></span>
+            <span className="a-row-main"><span>{ASSETS[a].name}</span><small>{kq(p.h[a].qty, a)} {a}</small></span>
             <b>{fmt(p.val(a))} BYN</b>
           </div>
         ))}
       </div>
       <Info l="Курс" r={R.src} />
-      <button className="a-btn red" onClick={() => showToast('Заявка на вывод создана', 'Средства поступят на Карту Crypto в течение часа')}>Вывести на Карту Crypto</button>
-      <a className="a-btn gray" href="#/whitebird">Открыть концепт WhiteBird</a>
+      <button className="a-btn red" onClick={openWhiteBird}>Открыть WhiteBird</button>
     </>
   );
 }

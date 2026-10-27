@@ -1620,3 +1620,7 @@
 .w-fold.open .w-fold-chev {
   transform: rotate(180deg);
 }
+
+.w-example.inset {
+  background: var(--field);
+}

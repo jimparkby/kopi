@@ -12,7 +12,10 @@ export function usePersisted(key, init, validate = () => true) {
     } catch (e) { /* приватный режим */ }
     return typeof init === 'function' ? init() : init;
   });
+  // Пишем только после изменений: начальное состояние не сохраняется, пока пользователь ничего не сделал.
+  const initial = useRef(value);
   useEffect(() => {
+    if (value === initial.current) return;
     try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* ignore */ }
   }, [key, value]);
   return [value, setValue];

@@ -3,6 +3,7 @@ import AlfaApp from './alfa/AlfaApp.jsx';
 import WhiteBirdApp from './whitebird/WhiteBirdApp.jsx';
 import { ALFA_KEY } from './alfa/model.js';
 import { WB_KEY } from './whitebird/model.js';
+import { resetKopi } from './shared/kopi.js';
 
 const APPS = [
   ['alfa', 'Альфа Банк', 'KOPI внутри банка'],
@@ -51,6 +52,7 @@ export default function App() {
       localStorage.removeItem(ALFA_KEY);
       localStorage.removeItem(WB_KEY);
     } catch (e) { /* приватный режим */ }
+    resetKopi();
     setEpoch((x) => x + 1);
   };
 

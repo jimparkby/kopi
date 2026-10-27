@@ -1,17 +1,17 @@
-import { useState } from 'react';
-import { fmt, qty, roundUp } from '../shared/format.js';
+import { useEffect, useState } from 'react';
+import { fmt } from '../shared/format.js';
 import { FALLBACK, useRates } from '../shared/rates.js';
 import { usePersisted, useToast, useArmed } from '../shared/hooks.js';
+import { useKopi, kopiOp, kopiRound, kopiValue, kq, resetKopi } from '../shared/kopi.js';
 import { Icon, Solid } from '../shared/icons.jsx';
 import { Phone, Toast } from '../shared/ui.jsx';
-import { ALFA_KEY, ASSETS, seed, isValid, applyPay, applyBuy, portfolio } from './model.js';
+import { ALFA_KEY, fresh, isValid, applyPay } from './model.js';
+import { WB_KEY } from '../whitebird/model.js';
 import { Home, Payments, History, Dialogs, Showcase, Chat, Kopi, Profile, Logo } from './screens.jsx';
 import { Subscriptions, AddAuto, AddFromHistory, RegForm } from './regular.jsx';
 import { SheetHost } from './sheets.jsx';
 import './alfa.css';
 
-// При первом живом курсе пересобираем демо чуть ниже рынка, чтобы портфель был в плюсе.
-const discounted = (r) => ({ ...r, BTC: r.BTC * 0.985, ETH: r.ETH * 0.98 });
 const LAYERS = ['subs', 'addAuto', 'addHist', 'regForm', 'kopi', 'chat', 'profile'];
 const NAV = [
   ['pay', 'pay', 'Платежи'],
@@ -22,11 +22,12 @@ const NAV = [
 ];
 
 export default function AlfaApp() {
-  const [d, setD] = usePersisted(ALFA_KEY, () => seed(FALLBACK), isValid);
-  const rates = useRates((r) =>
-    setD((s) => (s.seeded && !s.reseeded ? { ...seed(discounted(r)), reseeded: true } : s)),
-  );
+  const [raw, setD] = usePersisted(ALFA_KEY, fresh, isValid);
+  const [k, setK] = useKopi();
+  const rates = useRates();
   const R = rates || FALLBACK;
+  // Настройки сдачи живут в общей связке KOPI; без подключения сдачи нет (множитель 0).
+  const d = { ...raw, step: k.step, mult: k.linked ? k.mult : 0, asset: k.asset };
   const [tab, setTab] = useState('home');
   const [stack, setStack] = useState([]); // экраны поверх вкладок
   const [sheet, setSheet] = useState(null);
@@ -35,65 +36,65 @@ export default function AlfaApp() {
   const [toast, showToast] = useToast();
   const [resetArmed, armReset] = useArmed();
 
-  // Любое действие пользователя снимает флаг «демо-данные», чтобы живой курс их не перезаписал.
-  const commit = (fn) => setD((s) => ({ ...fn(s), seeded: false }));
+  const commit = (fn) => setD(fn);
   const go = (t) => { setTab(t); setStack([]); setSheet(null); };
   const push = (screen) => { setStack((st) => [...st.filter((x) => x.id !== screen.id), screen]); setSheet(null); };
   const pop = () => setStack((st) => st.slice(0, -1));
   const toSubs = () => { setStack([{ id: 'subs' }]); setSheet(null); };
 
-  const p = portfolio(d, R);
+  const p = kopiValue(k, R);
 
-  const buyNote = (b) =>
-    'Копилка набрала ' + fmt(b.amount) + ' BYN: куплено ' +
-    (b.asset === 'SAFE' ? 'консервативного инструмента' : qty(b.qty, b.asset) + ' ' + b.asset) + ' одним пакетом.';
+  // Переход из WhiteBird кнопкой «Оплатить картой в Альфа Банке» — сразу на экран KOPI.
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('kopi.open') === 'alfa') { sessionStorage.removeItem('kopi.open'); push({ id: 'kopi' }); }
+    } catch (e) { /* ignore */ }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** items: [{ name, a, kopi, cat, regId }] — оплата одного или нескольких платежей с экраном «Оплачено успешно». */
+  /** items: [{ name, a, kopi, cat, regId }] — оплата с экраном «Оплачено успешно». Сдача сразу уходит в WhiteBird и покупает монету. */
   const payMany = (items) => {
-    const need = items.reduce((t, x) => t + x.a + (x.kopi === false ? 0 : roundUp(x.a, d.step, d.mult)), 0);
-    if (need > d.balance) return showToast('Недостаточно средств', 'На карте ' + fmt(d.balance) + ' BYN');
-    let n = { ...d, seeded: false };
-    let kopi = 0;
+    const need = items.reduce((t, x) => t + x.a + (x.kopi === false ? 0 : kopiRound(k, x.a)), 0);
+    if (need > raw.balance) return showToast('Недостаточно средств', 'На карте ' + fmt(raw.balance) + ' BYN — пополните её');
+    let n = raw;
     let total = 0;
     const rows = [];
-    const buys = [];
+    const kops = [];
     const t = Date.now();
     items.forEach((x, i) => {
-      const r = applyPay(n, x.name, x.a, t + i * 2, R, x.kopi !== false, x.cat, x.regId);
-      n = r.s;
-      kopi += r.roundup;
+      const op = x.kopi === false ? null : kopiOp(k, R, x.name, x.a, t + i * 2);
+      n = applyPay(n, x.name, x.a, t + i * 2, op ? op.roundup : 0, x.cat, x.regId);
+      if (op) kops.unshift(op);
       total += x.a;
-      if (r.purchase) buys.push(r.purchase);
-      rows.push({ name: x.name, amt: fmt(x.a) + ' BYN', kopi: r.roundup ? '+' + fmt(r.roundup) + ' в KOPI' : 'без сдачи' });
+      rows.push({ name: x.name, amt: fmt(x.a) + ' BYN', kopi: op ? '+' + fmt(op.roundup) + ' BYN → WhiteBird' : 'без сдачи' });
     });
-    const note = buys.length
-      ? buyNote(buys[buys.length - 1])
-      : kopi
-        ? 'До покупки ' + ASSETS[n.asset].code + ' осталось ' + fmt(Math.max(0, n.threshold - n.piggy)) + ' BYN.'
-        : 'Сдачи нет: сумма круглая или округление выключено.';
+    const kopi = kops.reduce((s, o) => s + o.roundup, 0);
+    const got = kops.reduce((s, o) => s + o.qty, 0);
     setD(n);
+    if (kops.length) setK((s) => ({ ...s, ops: [...kops, ...s.ops] }));
     setSheet(null);
-    setDone({ total: fmt(total) + ' BYN', rows, kopi: '+' + fmt(kopi) + ' BYN', note });
-  };
-
-  const buyNow = () => {
-    if (d.piggy <= 0) return showToast('Копилка пуста', 'Оплатите картой — сдача уйдёт в KOPI');
-    const r = applyBuy({ ...d, seeded: false }, R, Date.now());
-    setD(r.s);
-    showToast('KOPI: куплено на ' + fmt(r.p.amount) + ' BYN', r.p.asset === 'SAFE' ? 'Консервативный инструмент' : qty(r.p.qty, r.p.asset) + ' ' + r.p.asset);
+    setDone({
+      total: fmt(total) + ' BYN',
+      rows,
+      kopi: kopi ? '+' + fmt(kopi) + ' BYN' : null,
+      note: kopi
+        ? 'Сдача переведена в WhiteBird и сразу обменяна: +' + kq(got, k.asset) + ' ' + k.asset + ' в вашем кошельке.'
+        : k.linked ? 'Сдачи нет: сумма уже круглая.' : 'Подключите KOPI — и сдача с каждой покупки будет превращаться в криптовалюту в WhiteBird.',
+    });
   };
 
   const reset = () =>
     armReset(() => {
-      setD({ ...seed(rates ? discounted(rates) : FALLBACK), reseeded: !!rates });
+      setD(fresh());
+      resetKopi();
+      try { localStorage.removeItem(ALFA_KEY); localStorage.removeItem(WB_KEY); } catch (e) { /* приватный режим */ }
       go('home');
-      showToast('Демо сброшено', 'Снова неделя покупок');
+      showToast('Демо сброшено', 'Всё с нуля: пополните карту и подключите KOPI');
     });
 
   const ctx = {
-    d, setD, R, p, tab, go, push, pop, toSubs, stack, commit, sheet, setSheet, showToast, payMany, buyNow, reset, resetArmed, setLocked,
+    d, setD, k, setK, R, p, tab, go, push, pop, toSubs, stack, commit, sheet, setSheet, showToast, payMany, reset, resetArmed, setLocked,
   };
-  const unread = d.hist.filter((h) => h.t > d.readAt).length;
+  const unread = k.ops.filter((o) => o.t > raw.readAt).length;
   const blueTop = tab !== 'shop' && stack.length === 0;
 
   return (
@@ -163,11 +164,13 @@ function Done({ done, onClose }) {
             <b>{r.amt}</b>
           </div>
         ))}
-        <div className="a-row static">
-          <span className="a-sq kopi sm">K</span>
-          <span className="a-row-main"><span><b>Сдача в KOPI</b></span></span>
-          <b className="k">{done?.kopi}</b>
-        </div>
+        {done?.kopi && (
+          <div className="a-row static">
+            <span className="a-sq kopi sm">K</span>
+            <span className="a-row-main"><span><b>Сдача в KOPI</b></span><small>Переведена в WhiteBird</small></span>
+            <b className="k">{done.kopi}</b>
+          </div>
+        )}
       </div>
       <p className="a-done-note">{done?.note}</p>
       <div style={{ flex: 1 }} />

@@ -2319,3 +2319,72 @@
 .a-footer > div > * {
   padding: 0 12px;
 }
+
+/* ── KOPI: связка Альфа → WhiteBird ── */
+.a-kopi-intro {
+  background: var(--lavender);
+  border-radius: 20px;
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.a-kopi-intro b {
+  font-size: 20px;
+  line-height: 1.25;
+}
+.a-kopi-intro span {
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.a-flow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--card);
+  border-radius: 20px;
+  padding: 12px 10px;
+}
+.a-flow-step {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  text-align: center;
+}
+.a-flow-step .a-sq {
+  margin-bottom: 3px;
+}
+.a-flow-step .a-logo {
+  color: #fff;
+}
+.a-flow-step b {
+  font-size: 13px;
+  white-space: nowrap;
+}
+.a-flow-step small {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.a-flow-arr {
+  color: var(--muted2);
+  flex: none;
+  margin-bottom: 26px;
+}
+.a-kopi-fine {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  text-align: center;
+}
+.a-kopi-empty {
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--muted);
+}
