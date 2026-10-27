@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { fmt, qty, roundUp } from '../shared/format.js';
 import { FALLBACK, useRates } from '../shared/rates.js';
 import { usePersisted, useToast, useArmed } from '../shared/hooks.js';
-import { Icon } from '../shared/icons.jsx';
+import { Icon, Solid } from '../shared/icons.jsx';
 import { Phone, Toast } from '../shared/ui.jsx';
 import { ALFA_KEY, ASSETS, seed, isValid, applyPay, applyBuy, portfolio } from './model.js';
 import { Home, Payments, History, Dialogs, Showcase, Chat, Kopi, Profile, Logo } from './screens.jsx';
@@ -14,7 +14,7 @@ import './alfa.css';
 const discounted = (r) => ({ ...r, BTC: r.BTC * 0.985, ETH: r.ETH * 0.98 });
 const LAYERS = ['subs', 'addAuto', 'addHist', 'regForm', 'kopi', 'chat', 'profile'];
 const NAV = [
-  ['pay', 'card', 'Платежи'],
+  ['pay', 'pay', 'Платежи'],
   ['hist', 'clock', 'История'],
   ['home', null, 'Главная'],
   ['dialogs', 'chat', 'Диалоги'],
@@ -110,7 +110,7 @@ export default function AlfaApp() {
       <nav className="a-nav">
         {NAV.map(([id, icon, label]) => (
           <button key={id} className={'a-nav-btn' + (tab === id && stack.length === 0 ? ' on' : '')} onClick={() => go(id)} aria-label={label}>
-            {icon ? <Icon name={icon} size={22} stroke={2.3} /> : <span className="a-nav-logo"><b>A</b><i /></span>}
+            {icon ? <Solid name={icon} size={24} /> : <span className="a-nav-logo"><b>A</b><i /></span>}
             <span className="a-nav-label">{label}</span>
             {id === 'dialogs' && unread > 0 && <span className="a-nav-dot" />}
           </button>

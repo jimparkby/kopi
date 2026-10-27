@@ -1597,3 +1597,26 @@
   color: var(--muted);
   line-height: 1.4;
 }
+
+/* ── KOPI: свёрнутые настройки покупки ── */
+.w-fold-head {
+  border: none;
+  background: none;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  color: var(--fg);
+}
+.w-fold-head .w-main small {
+  color: var(--muted);
+}
+.w-fold-chev {
+  color: var(--muted);
+  flex: none;
+  transition: transform 0.2s;
+}
+.w-fold.open .w-fold-chev {
+  transform: rotate(180deg);
+}

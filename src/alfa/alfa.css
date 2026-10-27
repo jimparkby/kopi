@@ -459,7 +459,7 @@
 .a-kopi-strip .a-ring > span {
   background: var(--lavender);
 }
-.a-kopi-strip span {
+.a-kopi-strip > span:not(.a-ring) {
   flex: 1;
 }
 .a-kopi-strip button {
@@ -826,12 +826,12 @@
   background: var(--fg);
   color: #fff;
 }
-.a-chips.purple button.on {
+.a-chips.violet button.on {
   background: var(--purple);
 }
 .a-tabs {
   display: flex;
-  gap: 28px;
+  gap: 20px;
   border-bottom: 1px solid #c9cdd3;
   padding: 0 8px;
   margin-top: 8px;
@@ -2196,4 +2196,105 @@
 
 .a-head:has(.a-tpl-head) {
   padding-bottom: 84px;
+}
+
+/* ── KOPI: свёрнутые настройки ── */
+.a-coin.md {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+.a-fold {
+  border-bottom: 1px solid var(--line-strong);
+}
+.a-fold:last-child {
+  border-bottom: none;
+}
+.a-fold > .a-row {
+  border-bottom: none;
+}
+.a-fold-val {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.a-fold.open .a-fold-val {
+  color: var(--accent);
+}
+.a-fold-chev {
+  transition: transform 0.2s;
+}
+.a-fold.open .a-fold-chev {
+  transform: rotate(180deg);
+}
+.a-fold-body {
+  padding: 2px 0 14px 52px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: a-fold-in 0.2s ease;
+}
+.a-fold-body .a-circles {
+  gap: 10px;
+}
+.a-fold-body .a-circle {
+  width: 50px;
+  height: 50px;
+  background: #f2f3f5;
+  font-size: 15px;
+}
+.a-opt {
+  border: none;
+  background: none;
+  width: 100%;
+  padding: 7px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+.a-opt .a-row-main > span {
+  font-size: 14px;
+}
+@keyframes a-fold-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.a-more {
+  border: none;
+  border-top: 1px solid var(--line-strong);
+  background: none;
+  width: 100%;
+  padding: 12px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* ── Залитые иконки: вырезы окрашены цветом подложки ── */
+.a-nav-btn {
+  --solid-cut: #fff;
+}
+.a-nav-btn.on {
+  --solid-cut: var(--lavender);
+}
+.a-head {
+  --solid-cut: #fff;
+}
+.a-head.band {
+  --solid-cut: var(--band);
+}
+.a-footer > div {
+  white-space: nowrap;
+  font-size: 14px;
+}
+.a-footer > div > * {
+  padding: 0 12px;
 }

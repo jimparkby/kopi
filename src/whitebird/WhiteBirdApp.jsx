@@ -610,6 +610,7 @@ function History({ ctx }) {
 function Kopi({ ctx }) {
   const { d, setD, R, setScreen, setSheet, buyNow, showToast, coinByn, later } = ctx;
   const [linking, setLinking] = useState(false);
+  const [setup, setSetup] = useState(false);
   const [armed, arm] = useArmed();
   const okCards = d.cards.filter((c) => c.region === 'rb');
   const chip = (items, cur, key, lab) =>
@@ -691,8 +692,13 @@ function Kopi({ ctx }) {
               <span className="w-fine left">Оплата эмулирует покупку по карте банка-партнёра</span>
             </div>
 
-            <div className="w-panel">
-              <b className="w-panel-title">Что покупать</b>
+            <div className={'w-panel w-fold' + (setup ? ' open' : '')}>
+              <button className="w-fold-head" onClick={() => setSetup(!setup)} aria-expanded={setup}>
+                <span className="w-main"><b className="w-panel-title">Настройки покупки</b><small>{d.asset} · до {fmtInt(d.step)} BYN · ×{d.mult} · пакет {fmtInt(d.threshold)} BYN</small></span>
+                <Icon name="chevDown" size={20} stroke={2.4} className="w-fold-chev" />
+              </button>
+              {setup && (<>
+              <span className="w-label">Что покупать</span>
               <div className="w-assets">
                 {KOPI_ASSETS.map((a) => (
                   <button key={a} className={d.asset === a ? 'on' : ''} onClick={() => setD((s) => ({ ...s, asset: a }))}>
@@ -706,6 +712,7 @@ function Kopi({ ctx }) {
               <div className="w-chips">{chip([1, 2, 5], d.mult, 'mult', (v) => '×' + v)}</div>
               <span className="w-label">Покупать пакетом, когда в копилке</span>
               <div className="w-chips">{chip([1000, 2000, 5000], d.threshold, 'threshold', (v) => fmtInt(v) + ' BYN')}</div>
+              </>)}
             </div>
             <button className="w-reset" onClick={() => arm(() => { setD((s) => ({ ...s, linked: false, piggy: 0 })); showToast('KOPI отключён', 'Купленные монеты остались в кошельке'); })}>
               {armed ? 'Нажмите ещё раз, чтобы отключить' : 'Отключить KOPI'}

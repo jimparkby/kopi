@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fmt, fmtInt, pct, qty, when } from '../shared/format.js';
-import { Icon } from '../shared/icons.jsx';
+import { Icon, Solid } from '../shared/icons.jsx';
 import { Switch } from '../shared/ui.jsx';
 import { ASSETS, ASSET_KEYS, FAVS, CAT_COLORS, REG_TYPES, PRODUCTS, nextDate, daysUntil } from './model.js';
 
@@ -43,8 +43,8 @@ export function Header({ ctx, title, band = true, right, children }) {
           <button className="a-bonus" onClick={() => setSheet('cashback')} aria-label="Альфа-бонусы">
             <span className="a-bonus-star">A</span>0
           </button>
-          <button className="a-icon-plain" onClick={() => push({ id: 'profile' })} aria-label="Профиль"><Icon name="user" size={24} stroke={2.4} /></button>
-          <button className="a-icon-plain" onClick={() => setLocked(true)} aria-label="Выйти"><Icon name="logout" size={23} stroke={2.4} /></button>
+          <button className="a-icon-plain" onClick={() => push({ id: 'profile' })} aria-label="Профиль"><Solid name="user" size={25} /></button>
+          <button className="a-icon-plain" onClick={() => setLocked(true)} aria-label="Выйти"><Solid name="exit" size={24} /></button>
         </span>
       </div>
       <div className="a-head-title">
@@ -443,7 +443,7 @@ export function Showcase({ ctx }) {
     <div className="a-page">
       <Header ctx={ctx} title="Продукты и услуги" band={false} />
       <div className="a-content">
-        <div className="a-chips purple">
+        <div className="a-chips violet">
           {chips.map(([k, l]) => <button key={k} className={cat === k ? 'on' : ''} onClick={() => setCat(k)}>{l}</button>)}
         </div>
         {SHOW.filter((g) => cat === 'all' || g.cat === cat).map((g) => (
@@ -515,6 +515,10 @@ export function Kopi({ ctx }) {
       </button>
     ));
   const holdRows = ASSET_KEYS.filter((a) => d.hold[a].cost > 0 || a === d.asset);
+  // Настройки свёрнуты: открыта максимум одна строка, история — последние 3 записи.
+  const [fold, setFold] = useState(null);
+  const [allHist, setAllHist] = useState(false);
+  const toggle = (k) => setFold((f) => (f === k ? null : k));
   return (
     <>
       <BackHead title="KOPI · крипто со сдачи" onBack={pop} right={<span className="a-live-dot" title={R.src} style={{ background: R.live ? GREEN : '#A0A8B4' }} />} />
@@ -552,36 +556,38 @@ export function Kopi({ ctx }) {
             <button className="a-btn gray" onClick={() => setSheet('shop')}>Оплатить картой</button>
           </div>
 
-          <h2 className="a-h2">Куда вкладывать</h2>
+          <h2 className="a-h2">Настройки</h2>
           <div className="a-card a-list">
-            {ASSET_KEYS.map((a) => (
-              <button key={a} className="a-row" onClick={() => commit((s) => ({ ...s, asset: a }))} aria-pressed={d.asset === a}>
-                <span className="a-coin lg" style={{ background: ASSETS[a].bg }}>{ASSETS[a].sym}</span>
-                <span className="a-row-main"><span>{ASSETS[a].name}</span><small>{ASSETS[a].desc}</small></span>
-                <span className={'a-radio' + (d.asset === a ? ' on' : '')}>{d.asset === a && <Icon name="check" size={13} stroke={3} />}</span>
-              </button>
-            ))}
+            <Fold icon={<span className="a-coin lg" style={{ background: A.bg }}>{A.sym}</span>} label="Куда вкладывать" value={A.name} open={fold === 'asset'} onToggle={() => toggle('asset')}>
+              {ASSET_KEYS.map((a) => (
+                <button key={a} className="a-opt" onClick={() => { commit((s) => ({ ...s, asset: a })); setFold(null); }} aria-pressed={d.asset === a}>
+                  <span className="a-coin md" style={{ background: ASSETS[a].bg }}>{ASSETS[a].sym}</span>
+                  <span className="a-row-main"><span>{ASSETS[a].name}</span><small>{ASSETS[a].desc}</small></span>
+                  <span className={'a-radio' + (d.asset === a ? ' on' : '')}>{d.asset === a && <Icon name="check" size={13} stroke={3} />}</span>
+                </button>
+              ))}
+            </Fold>
+            <Fold icon={<span className="a-sq light sm">↑</span>} label="Округлять до" value={fmtInt(d.step) + ' BYN'} open={fold === 'step'} onToggle={() => toggle('step')}>
+              <div className="a-circles">{circ([100, 500, 1000], d.step, 'step', (v) => fmtInt(v))}<span className="a-muted">BYN</span></div>
+            </Fold>
+            <Fold icon={<span className="a-sq light sm">×</span>} label="Множитель сдачи" value={'×' + d.mult} open={fold === 'mult'} onToggle={() => toggle('mult')}>
+              <div className="a-circles">{circ([1, 2, 5], d.mult, 'mult', (v) => '×' + v)}</div>
+            </Fold>
+            <Fold icon={<span className="a-sq light sm">≡</span>} label="Покупать пакетом" value={'от ' + fmtInt(d.threshold) + ' BYN'} open={fold === 'threshold'} onToggle={() => toggle('threshold')}>
+              <div className="a-seg">
+                {[1000, 2000, 5000].map((v) => <button key={v} className={d.threshold === v ? 'on' : ''} onClick={() => commit((s) => ({ ...s, threshold: v }))}>{fmtInt(v)} BYN</button>)}
+              </div>
+            </Fold>
+            <button className="a-row" onClick={() => setSheet('wallet')}>
+              <span className="a-sq sm" style={{ background: '#2470FF', color: '#fff' }}>W</span>
+              <span className="a-row-main"><span>Хранение</span><small>Кошелёк WhiteBird</small></span>
+              <Icon name="right" size={18} className="a-chev" />
+            </button>
           </div>
-
-          <h2 className="a-h2">Округлять до</h2>
-          <div className="a-circles">{circ([100, 500, 1000], d.step, 'step', (v) => fmtInt(v))}<span className="a-muted">BYN</span></div>
-          <h2 className="a-h2">Множитель сдачи</h2>
-          <div className="a-circles">{circ([1, 2, 5], d.mult, 'mult', (v) => '×' + v)}</div>
-          <h2 className="a-h2">Покупать пакетом</h2>
-          <div className="a-seg">
-            {[1000, 2000, 5000].map((v) => <button key={v} className={d.threshold === v ? 'on' : ''} onClick={() => commit((s) => ({ ...s, threshold: v }))}>{fmtInt(v)} BYN</button>)}
-          </div>
-
-          <h2 className="a-h2">Хранение</h2>
-          <button className="a-card a-row solo" onClick={() => setSheet('wallet')}>
-            <span className="a-sq" style={{ background: '#2470FF', color: '#fff' }}>W</span>
-            <span className="a-row-main"><span>Кошелёк WhiteBird</span><small>Покупку проводит резидент ПВТ. Вывод на Карту Crypto Mastercard</small></span>
-            <Icon name="right" size={18} className="a-chev" />
-          </button>
 
           <h2 className="a-h2">Округления и покупки · {d.hist.filter((h) => h.type === 'round').length}</h2>
           <div className="a-card a-list">
-            {d.hist.slice(0, 12).map((h) => (h.type === 'round' ? (
+            {d.hist.slice(0, allHist ? 12 : 3).map((h) => (h.type === 'round' ? (
               <div key={h.id} className="a-row static">
                 <span className="a-sq kopi-soft">↑</span>
                 <span className="a-row-main"><span>{h.merchant}</span><small>{fmt(h.a)} → {fmt(h.rounded)} BYN · {when(h.t)}</small></span>
@@ -594,11 +600,31 @@ export function Kopi({ ctx }) {
                 <b>{fmt(h.amount)} BYN</b>
               </div>
             )))}
+            {d.hist.length > 3 && (
+              <button className="a-more" onClick={() => setAllHist(!allHist)} aria-expanded={allHist}>
+                {allHist ? 'Свернуть' : 'Показать все · ' + Math.min(12, d.hist.length)}
+                <Icon name="chevDown" size={16} stroke={2.6} style={{ transform: allHist ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+              </button>
+            )}
           </div>
           <button className="a-reset" onClick={reset}>{resetArmed ? 'Нажмите ещё раз, чтобы сбросить' : 'Начать демо заново'}</button>
         </div>
       </div>
     </>
+  );
+}
+
+function Fold({ icon, label, value, open, onToggle, children }) {
+  return (
+    <div className={'a-fold' + (open ? ' open' : '')}>
+      <button className="a-row" onClick={onToggle} aria-expanded={open}>
+        {icon}
+        <span className="a-row-main"><span>{label}</span></span>
+        <span className="a-fold-val">{value}</span>
+        <Icon name="chevDown" size={18} stroke={2.4} className="a-chev a-fold-chev" />
+      </button>
+      {open && <div className="a-fold-body">{children}</div>}
+    </div>
   );
 }
 

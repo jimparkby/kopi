@@ -68,3 +68,54 @@ export function Icon({ name, size = 22, stroke = 2, style, className }) {
     </svg>
   );
 }
+
+// Залитые иконки в стиле нижнего меню и шапки Альфа Банка: основная форма — currentColor, детали — цветом фона.
+const S = {
+  pay: (
+    <>
+      <rect x="2" y="4.5" width="20" height="15" rx="3.5" fill="currentColor" />
+      <path d="M7 10h9.5l-2.2-2.2M17 14H7.5l2.2 2.2" stroke="var(--solid-cut, #fff)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="10" fill="currentColor" />
+      <path d="M12 7v5.3l3.2 2" stroke="var(--solid-cut, #fff)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </>
+  ),
+  chat: (
+    <>
+      <path d="M12 2.8c5.3 0 9.5 3.6 9.5 8s-4.2 8-9.5 8c-1 0-2-.1-2.9-.4L4.2 20.8l1.2-4C3.5 15.3 2.5 13.2 2.5 10.8c0-4.4 4.2-8 9.5-8z" fill="currentColor" />
+      <path d="M8 9.3h8M8 12.8h5" stroke="var(--solid-cut, #fff)" strokeWidth="1.9" strokeLinecap="round" fill="none" />
+    </>
+  ),
+  grid: (
+    <>
+      <rect x="3" y="3" width="8" height="10.5" rx="1.6" fill="currentColor" />
+      <rect x="13" y="3" width="8" height="6.5" rx="1.6" fill="currentColor" />
+      <rect x="3" y="15.5" width="8" height="5.5" rx="1.6" fill="currentColor" />
+      <rect x="13" y="11.5" width="8" height="9.5" rx="1.6" fill="currentColor" />
+    </>
+  ),
+  user: (
+    <>
+      <circle cx="12" cy="7.5" r="4.3" fill="currentColor" />
+      <path d="M3.5 21c.3-4.6 3.9-7.4 8.5-7.4s8.2 2.8 8.5 7.4z" fill="currentColor" />
+    </>
+  ),
+  exit: (
+    <>
+      <path d="M13.5 4H19v16h-5.5" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" fill="none" />
+      <path d="M4 4.6 13.5 2.5v19L4 19.4z" fill="currentColor" />
+      <circle cx="10.6" cy="12" r="1.1" fill="var(--solid-cut, #fff)" />
+    </>
+  ),
+};
+
+export function Solid({ name, size = 24, className }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden="true">
+      {S[name]}
+    </svg>
+  );
+}
