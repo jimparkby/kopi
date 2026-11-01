@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { fmt, fmtInt, qty, when, parseAmount, roundUp } from '../shared/format.js';
+import { fmt, fmtInt, qty, when, parseAmount } from '../shared/format.js';
 import { Icon } from '../shared/icons.jsx';
 import { Sheet, Switch } from '../shared/ui.jsx';
 import { ASSETS, ASSET_KEYS, FAVS, PRESETS, PRODUCTS, BRANCHES, CONTACTS, CAT_COLORS, REG_TYPES, nextDate, daysUntil } from './model.js';
 import { RegIcon, openWhiteBird } from './screens.jsx';
-import { kq } from '../shared/kopi.js';
+import { kq, kopiRule } from '../shared/kopi.js';
 import { per } from './regular.jsx';
 
 const EXTRA_TPL = {
@@ -404,7 +404,7 @@ function ShopSheet({ ctx }) {
       </div>
       <div className="a-sheet-info">
         <span>Classic · {fmt(d.balance)} BYN</span>
-        <span className="k">{k ? 'В KOPI +' + fmt(roundUp(k, d.step, d.mult)) + ' BYN' : 'KOPI: до ' + fmtInt(d.step) + ' BYN'}</span>
+        <span className="k">{k ? 'В KOPI +' + fmt(ctx.up(k)) + ' BYN' : 'KOPI: ' + kopiRule(ctx.k)}</span>
       </div>
       <button className="a-btn red" onClick={() => (k ? payMany([{ name: 'Покупка', a: k, cat: 'Прочее' }]) : showToast('Неверная сумма', 'Введите сумму, например 6,40'))}>
         Оплатить {k ? fmt(k) + ' BYN' : ''}
@@ -427,7 +427,7 @@ function FavSheet({ ctx, f }) {
       <AmountInput value={amount} onChange={setAmount} />
       <div className="a-sheet-info">
         <span>Classic · {fmt(d.balance)} BYN</span>
-        <span className="k">{k && !isTransfer ? 'В KOPI +' + fmt(roundUp(k, d.step, d.mult)) + ' BYN' : isTransfer ? 'Переводы без сдачи' : ''}</span>
+        <span className="k">{k && !isTransfer ? 'В KOPI +' + fmt(ctx.up(k)) + ' BYN' : isTransfer ? 'Переводы без сдачи' : ''}</span>
       </div>
       <button className="a-btn red" onClick={() => (k ? payMany([{ name: f.name, a: k, cat: f.cat, kopi: !isTransfer }]) : showToast('Неверная сумма', 'Введите сумму'))}>
         Оплатить
@@ -469,7 +469,7 @@ function UtilitiesSheet({ ctx }) {
   const items = FAVS.filter((f) => f.cat === 'ЖКХ');
   const [sel, setSel] = useState(items.map((f) => f.id));
   const chosen = items.filter((f) => sel.includes(f.id));
-  const kopi = chosen.reduce((t, f) => t + roundUp(f.amt, d.step, d.mult), 0);
+  const kopi = chosen.reduce((t, f) => t + ctx.up(f.amt), 0);
   return (
     <>
       <div className="a-list flat">
@@ -478,7 +478,7 @@ function UtilitiesSheet({ ctx }) {
           return (
             <button key={f.id} className="a-row" onClick={() => setSel(on ? sel.filter((x) => x !== f.id) : [...sel, f.id])} aria-pressed={on}>
               <span className="a-circ sm" style={{ background: f.color }}>{f.glyph}</span>
-              <span className="a-row-main"><span>{f.name}</span><small className="k">+{fmt(roundUp(f.amt, d.step, d.mult))} в KOPI</small></span>
+              <span className="a-row-main"><span>{f.name}</span><small className="k">+{fmt(ctx.up(f.amt))} в KOPI</small></span>
               <b>{fmt(f.amt)}</b>
               <span className={'a-radio' + (on ? ' on' : '')}>{on && <Icon name="check" size={13} stroke={3} />}</span>
             </button>
@@ -525,6 +525,7 @@ function SearchSheet({ ctx }) {
     ['Обмен валюты', 'swap', () => setSheet('exchange')],
     ['Коммунальные платежи', 'home', () => setSheet('utilities')],
     ['KOPI: настройки сдачи', 'trend', () => push({ id: 'kopi' })],
+    ['KOPI Премиум: семья', 'users', () => push({ id: 'premium' })],
     ['Открыть WhiteBird', 'trend', openWhiteBird],
     ['История операций', 'clock', () => go('hist')],
     ['Отделения и банкоматы', 'pin', () => setSheet('map')],
@@ -619,7 +620,7 @@ function OpSheet({ ctx, id }) {
 function RegSheet({ ctx, r }) {
   const { d, commit, payMany, setSheet, showToast } = ctx;
   const next = nextDate(r);
-  const up = roundUp(r.amt, d.step, d.mult);
+  const up = ctx.up(r.amt);
   const set = (patch) => commit((s) => ({ ...s, regs: s.regs.map((x) => (x.id === r.id ? { ...x, ...patch } : x)) }));
   const off = !r.active || r.hidden;
   return (
@@ -742,8 +743,9 @@ function CashbackSheet({ ctx }) {
 function AboutSheet() {
   return (
     <div className="a-about">
-      <p><b>KOPI</b> округляет каждую оплату картой вверх до 1, 5 или 10 BYN. Разница копится в копилке.</p>
-      <p>Когда копилка достигает порога, KOPI одним пакетом покупает BTC, ETH или консервативный BYN-инструмент. Покупку проводит WhiteBird, резидент ПВТ.</p>
+      <p><b>KOPI</b> откладывает с каждой оплаты картой: округляет её вверх до 1, 5 или 10 BYN либо берёт процент по прогрессивной шкале 3–5–10%.</p>
+      <p>С автоинвестированием WhiteBird, резидент ПВТ, сразу покупает BTC, ETH или USDT. Без него сумма ждёт в копилке, пока вы не купите монету сами.</p>
+      <p><b>Премиум</b> подключает к накоплениям всю семью: один кошелёк и видно вклад каждого.</p>
       <p>«Мои подписки» собирают подписки, автоплатежи и счета в одном месте: календарь списаний, подсказки, отписка в один тап.</p>
       <p>Это интерактивный концепт: оплаты эмулируются, курсы — живые (НБРБ, Dzengi, CoinGecko).</p>
     </div>

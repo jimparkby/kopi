@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { fmt, fmtInt, pct, qty, when, roundUp } from '../shared/format.js';
-import { kq } from '../shared/kopi.js';
+import { fmt, fmtInt, pct, when } from '../shared/format.js';
+import { kq, kopiCalc, kopiRule, kopiMonthly, kopiLadder, kopiBuySaved, kopiFamily, usePremium, KOPI_RATES, KOPI_STEPS, KOPI_SAMPLES, PREMIUM_PRICE, PREM_PERKS, FAMILY_MAX } from '../shared/kopi.js';
 import { useArmed } from '../shared/hooks.js';
 import { Icon, Solid } from '../shared/icons.jsx';
-import { Switch } from '../shared/ui.jsx';
-import { ASSETS, ASSET_KEYS, FAVS, CAT_COLORS, REG_TYPES, PRODUCTS, nextDate, daysUntil } from './model.js';
+import { Switch, PremiumCard, PremiumMark } from '../shared/ui.jsx';
+import { ASSETS, ASSET_KEYS, FAVS, CAT_COLORS, REG_TYPES, PRODUCTS, CONTACTS, nextDate, daysUntil } from './model.js';
 
 const GREEN = '#21A038';
 const RED = '#EF3124';
@@ -128,9 +128,9 @@ export function Home({ ctx }) {
           <ProdRow
             icon={<span className="a-sq kopi">K</span>}
             top="KOPI | Сдача в крипто · WhiteBird"
-            main={k.linked ? <>{fmt(p.value)} <Byn /></> : 'Не подключён'}
+            main={k.linked ? <>{fmt(p.value + p.saved)} <Byn /></> : 'Не подключён'}
             plain={!k.linked}
-            sub={k.linked ? (k.ops.length ? 'Покупок со сдачи: ' + k.ops.length + ' · ' + k.asset : 'Оплатите картой — сдача купит ' + k.asset) : 'Подключить за 1 шаг'}
+            sub={k.linked ? (p.saved ? 'В копилке ' + fmt(p.saved) + ' BYN' : k.ops.length ? 'Покупок со сдачи: ' + k.ops.length + ' · ' + k.asset : k.auto ? 'Оплатите картой — сдача купит ' + k.asset : 'Оплатите картой — сдача пойдёт в копилку') : 'Подключить за 1 шаг'}
             subColor="var(--purple)"
             onClick={() => push({ id: 'kopi' })}
           />
@@ -194,7 +194,7 @@ export function Payments({ ctx }) {
         <button className="a-promo kopi" onClick={() => push({ id: 'kopi' })}>
           <span className="a-promo-text">
             <b>Сдача в крипто · KOPI</b>
-            <span>{k.linked ? 'В WhiteBird ' + fmt(p.value) + ' BYN · ' + k.asset : 'Сдача с покупок → криптовалюта в WhiteBird'}</span>
+            <span>{k.linked ? 'В KOPI ' + fmt(p.value + p.saved) + ' BYN · ' + k.asset : 'Сдача с покупок → криптовалюта в WhiteBird'}</span>
           </span>
           <span className="a-sq kopi">K</span>
         </button>
@@ -388,6 +388,7 @@ export function Dialogs({ ctx }) {
 
 /* ───────────── Витрина ───────────── */
 const SHOW = [
+  { cat: 'premium', group: 'Премиум', items: [{ id: 'premium', t: 'KOPI Премиум', s: 'Копите на крипту всей семьёй', art: 'kopi' }] },
   { cat: 'cards', group: 'Оформите нужное', items: [{ id: 'cards', t: 'Карты', art: 'fan' }, { id: 'salary', t: 'Зарплатная карта', s: 'Оформите бесплатную карту с доставкой на дом' }] },
   { cat: 'save', group: 'Накопите на мечту', items: [{ id: 'kopi', t: 'KOPI', s: 'Крипто со сдачи с каждой покупки', art: 'kopi' }, { id: 'safe', t: 'Альфа Сейф', art: 'safe' }, { id: 'dep', t: 'Вклады', s: 'Получайте прибыль от своих сбережений' }, { id: 'piggy', t: 'Копилка', s: 'Откладывайте процент от поступлений' }] },
   { cat: 'credit', group: 'Кредиты', items: [{ id: 'loan', t: 'Кредит наличными', s: 'Решение за 2 минуты' }, { id: 'cc', t: 'Карта «100 дней»', s: 'Без процентов до 100 дней', art: 'red' }] },
@@ -397,7 +398,7 @@ const SHOW = [
 export function Showcase({ ctx }) {
   const { push, setSheet } = ctx;
   const [cat, setCat] = useState('all');
-  const chips = [['all', 'Все'], ['cards', 'Карты'], ['credit', 'Кредиты'], ['save', 'Вклады'], ['ins', 'Страхование']];
+  const chips = [['all', 'Все'], ['cards', 'Карты'], ['credit', 'Кредиты'], ['save', 'Вклады'], ['ins', 'Страхование'], ['premium', 'Премиум']];
   return (
     <div className="a-page">
       <Header ctx={ctx} title="Продукты и услуги" band={false} />
@@ -410,7 +411,7 @@ export function Showcase({ ctx }) {
             <h2 className="a-h2">{g.group}</h2>
             <div className="a-show-grid">
               {g.items.map((it) => (
-                <button key={it.id} className={'a-show' + (it.art ? ' art-' + it.art : '')} onClick={() => (it.id === 'kopi' ? push({ id: 'kopi' }) : setSheet('offer:' + it.id + ':' + it.t))}>
+                <button key={it.id} className={'a-show' + (it.art ? ' art-' + it.art : '')} onClick={() => (it.id === 'kopi' || it.id === 'premium' ? push({ id: it.id }) : setSheet('offer:' + it.id + ':' + it.t))}>
                   <b>{it.t}</b>
                   {it.s && <span>{it.s}</span>}
                   {it.art && <i className="a-show-art" />}
@@ -426,7 +427,7 @@ export function Showcase({ ctx }) {
 
 /* ───────────── Альфа-Чат ───────────── */
 const ANSWERS = {
-  'Как работает KOPI?': 'Каждая оплата картой округляется вверх, разница копится и пакетом покупает выбранный актив через WhiteBird.',
+  'Как работает KOPI?': 'С каждой оплаты картой KOPI откладывает сдачу или процент. С автоинвестированием WhiteBird сразу покупает выбранную монету, без него сумма ждёт в копилке.',
   'Как отменить подписку?': 'Платежи → Мои подписки и автоплатежи → выберите сервис → «Отписаться». Возобновить можно в «Отключённых».',
   'Где мои деньги из KOPI?': 'Монеты хранятся в кошельке WhiteBird. Вывести можно на Карту Crypto: KOPI → Хранение.',
 };
@@ -469,14 +470,13 @@ export const openWhiteBird = () => {
 };
 
 export function Kopi({ ctx }) {
-  const { d, k, setK, R, p, reset, resetArmed, setSheet, pop, showToast } = ctx;
+  const { d, k, setK, R, p, reset, resetArmed, setSheet, push, pop, showToast } = ctx;
   const [allHist, setAllHist] = useState(false);
   const [linking, setLinking] = useState(false);
   const [offArmed, armOff] = useArmed();
   const A = ASSETS[k.asset];
-  // Пример на чашке кофе пересчитывается вместе с настройками; оценка в месяц — средняя сдача × 40 покупок.
-  const sample = roundUp(640, k.step, k.mult);
-  const monthly = Math.round((40 * k.step * k.mult) / 2);
+  // Пример на чашке кофе пересчитывается вместе с настройками.
+  const sample = kopiCalc(k, 640);
   const catOf = Object.fromEntries(d.ops.map((o) => ['k' + o.id.slice(1), o.cat]));
   const held = ASSET_KEYS.filter((a) => p.h[a].qty > 0);
   const set = (patch) => setK((s) => ({ ...s, ...patch }));
@@ -524,10 +524,25 @@ export function Kopi({ ctx }) {
       <Icon name="right" size={16} className="a-flow-arr" />
       <div className="a-flow-step">
         <span className="a-sq sm" style={{ background: '#2470FF', color: '#fff' }}>W</span>
-        <b>WhiteBird</b>
-        <small>покупает {A.code}</small>
+        <b>{k.auto ? 'WhiteBird' : 'Копилка'}</b>
+        <small>{k.auto ? 'покупает ' + A.code : 'купите сами'}</small>
       </div>
     </div>
+  );
+
+  const savedCard = p.saved > 0 && (
+    <div className="a-card a-saved">
+      <span className="a-row-main"><small>В копилке, ждёт покупки</small><b>{fmt(p.saved)} BYN</b></span>
+      <button className="a-btn red sm" onClick={() => { setK((s) => kopiBuySaved(s, R, Date.now())); showToast('Куплено: ' + k.asset, 'На ' + fmt(p.saved) + ' BYN по текущему курсу'); }}>Купить {k.asset}</button>
+    </div>
+  );
+
+  const premiumRow = (
+    <button className="a-lrow a-prem-row" onClick={() => push({ id: 'premium' })}>
+      <PremiumMark />
+      <span className="a-row-main"><span>KOPI Премиум</span><small>{k.premium ? 'В семье ' + (k.family.length + 1) + ' чел.' : 'Копите всей семьёй'}</small></span>
+      <Icon name="right" size={18} className="a-chev" />
+    </button>
   );
 
   if (!k.linked) {
@@ -541,11 +556,13 @@ export function Kopi({ ctx }) {
               <span>Платите картой Альфа Банка как обычно. Сумма округляется вверх, разница мгновенно уходит в ваш кошелёк WhiteBird и покупает выбранную монету.</span>
             </section>
             {flow}
+            {savedCard}
             {pick}
             <button className="a-btn red" onClick={link} disabled={linking}>
               {linking ? 'Подключаем WhiteBird…' : 'Подключить KOPI к карте ··' + k.card}
             </button>
             <p className="a-kopi-fine">Покупку проводит WhiteBird — резидент ПВТ. Банк передаёт только сумму сдачи.</p>
+            {premiumRow}
           </div>
         </div>
       </>
@@ -579,12 +596,15 @@ export function Kopi({ ctx }) {
             )}
           </section>
           {flow}
+          {savedCard}
           <div className="a-two">
             <button className="a-btn red" onClick={() => setSheet('shop')}>Оплатить картой</button>
             <button className="a-btn gray" onClick={openWhiteBird}>Открыть WhiteBird</button>
           </div>
 
           {pick}
+
+          {premiumRow}
 
           <h2 className="a-h2">Как копится сдача</h2>
           <div className="a-card a-tune">
@@ -593,9 +613,32 @@ export function Kopi({ ctx }) {
               <span className="a-row-main"><span>Кофе {fmt(640)} BYN</span><small>спишется {fmt(640 + sample)} BYN</small></span>
               <b className="k">+{fmt(sample)}</b>
             </div>
-            <Tune label="Округлять до" items={[100, 500, 1000]} cur={k.step} lab={(v) => fmtInt(v) + ' BYN'} set={(v) => set({ step: v })} />
-            <Tune label="Множитель сдачи" items={[1, 2, 5]} cur={k.mult} lab={(v) => '×' + v} set={(v) => set({ mult: v })} />
-            <span className="a-tune-note">≈ {fmt(monthly)} BYN в месяц при 40 покупках</span>
+            <Tune label="Способ" items={['round', 'pct']} cur={k.mode} lab={(v) => (v === 'round' ? 'Округление' : 'Процент')} set={(v) => set({ mode: v })} />
+            {k.mode === 'round' ? (
+              <>
+                <Tune label="Округлять до" items={KOPI_STEPS} cur={k.step} lab={(v) => fmtInt(v) + ' BYN'} set={(v) => set({ step: v })} />
+                <Tune label="Множитель сдачи" items={[1, 2, 5]} cur={k.mult} lab={(v) => '×' + v} set={(v) => set({ mult: v })} />
+              </>
+            ) : (
+              <>
+                <Tune label="Максимальный процент" items={KOPI_RATES} cur={k.rate} lab={(v) => v + '%'} set={(v) => set({ rate: v })} />
+                <div className="a-ladder">
+                  {kopiLadder(k.rate).map((r) => <span key={r.label}><i>{r.label}</i><b>{r.rate}%</b></span>)}
+                </div>
+                <span className="a-tune-note">Как прогрессивный налог: каждая ставка действует только на часть покупки внутри своей ступени.</span>
+                <div className="a-ladder samples">
+                  {KOPI_SAMPLES.map((a) => {
+                    const v = kopiCalc(k, a);
+                    return <span key={a}><i>{fmt(a)} BYN</i><b className="k">+{fmt(v)}</b><small>{((v / a) * 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}%</small></span>;
+                  })}
+                </div>
+              </>
+            )}
+            <span className="a-tune-note">≈ {fmt(kopiMonthly(k))} BYN в месяц при 40 покупках{k.mode === 'pct' ? ' по 25 BYN' : ''}</span>
+            <div className="a-auto">
+              <span className="a-row-main"><span>Автоинвестирование</span><small>{k.auto ? 'Крипта покупается сразу при каждой оплате' : 'Сумма копится в BYN, монету покупаете сами'}</small></span>
+              <Switch on={k.auto} onChange={(v) => set({ auto: v })} label="Автоинвестирование" />
+            </div>
           </div>
 
           <h2 className="a-h2">Сдача и покупки</h2>
@@ -608,7 +651,7 @@ export function Kopi({ ctx }) {
               {k.ops.slice(0, allHist ? 20 : 3).map((o) => (
                 <div key={o.id} className="a-row static">
                   <span className="a-reg-ic" style={{ background: CAT_COLORS[catOf[o.id]] || '#8A96A8' }}>{o.merchant[0]}</span>
-                  <span className="a-row-main"><span>{o.merchant}</span><small>{fmt(o.a)} → {fmt(o.a + o.roundup)} BYN · {when(o.t)}</small></span>
+                  <span className="a-row-main"><span>{o.merchant}</span><small>{o.batch ? 'Покупка из копилки' : fmt(o.a) + ' → ' + fmt(o.a + o.roundup) + ' BYN'} · {when(o.t)}</small></span>
                   <span className="a-row-end"><b className="k">+{fmt(o.roundup)}</b><small>{kq(o.qty, o.asset)} {o.asset}</small></span>
                 </div>
               ))}
@@ -630,6 +673,89 @@ export function Kopi({ ctx }) {
   );
 }
 
+/* ───────────── Премиум ───────────── */
+export function Premium({ ctx }) {
+  const { k, setK, R, p, pop, push, showToast } = ctx;
+  const f = usePremium(k, setK, R, showToast);
+  const [armed, arm] = useArmed();
+  const fam = kopiFamily(k);
+  return (
+    <>
+      <BackHead title="KOPI Премиум" onBack={pop} />
+      <div className="a-layer-body">
+        <div className="a-screen">
+          {k.premium
+            ? <PremiumCard label="Семейные накопления" value={fmt(p.value + p.saved) + ' BYN'} />
+            : <PremiumCard label="Семейный счёт" value={'до ' + (FAMILY_MAX + 1) + ' человек'} />}
+          {!k.premium ? (
+            <>
+              <div className="a-card a-list">
+                {PREM_PERKS.map(([t, s]) => (
+                  <div key={t} className="a-row static">
+                    <span className="a-row-main"><span>{t}</span><small>{s}</small></span>
+                  </div>
+                ))}
+              </div>
+              <div className="a-card a-prem-price">
+                <span><i>Первые 30 дней</i><b>0 BYN</b></span>
+                <span><i>Далее в месяц</i><b>{fmt(PREMIUM_PRICE)} BYN</b></span>
+              </div>
+              <button className="a-btn a-btn-prem" onClick={f.subscribe}>Подключить</button>
+              <p className="a-kopi-fine">Отключить можно в любой момент. В демо деньги не списываются.</p>
+            </>
+          ) : (
+            <>
+              {!k.linked && (
+                <div className="a-card a-saved">
+                  <span className="a-row-main"><span>KOPI не подключён</span><small>Без него сдача никуда не пойдёт</small></span>
+                  <button className="a-btn red sm" onClick={() => push({ id: 'kopi' })}>Подключить</button>
+                </div>
+              )}
+              <h2 className="a-h2">Семья · {k.family.length + 1} из {FAMILY_MAX + 1}</h2>
+              <div className="a-card a-list">
+                {fam.rows.map((m) => (
+                  <div key={m.id} className="a-row static a-fam">
+                    <span className="a-reg-ic" style={{ background: m.color }}>{m.name[0]}</span>
+                    <span className="a-row-main">
+                      <span>{m.name}{m.gone ? ' (не в семье)' : ''}</span>
+                      <small>{fmt(m.sum)} BYN · {m.share}%</small>
+                      <i className="a-fam-bar"><em style={{ width: m.share + '%', background: m.color }} /></i>
+                    </span>
+                    {!m.me && !m.gone && (
+                      <span className="a-fam-acts">
+                        <button className="a-pill-btn" onClick={() => f.buy(m)}>Покупка</button>
+                        <button className="a-icon-plain" onClick={() => f.remove(m)} aria-label={'Убрать: ' + m.name}><Icon name="close" size={16} /></button>
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {k.family.length > 0 && <p className="a-kopi-fine">«Покупка» имитирует оплату картой родственника, ведь в демо один телефон.</p>}
+              {f.adding ? (
+                <div className="a-card a-fam-form">
+                  <div className="a-contacts">
+                    {CONTACTS.map((c) => (
+                      <button key={c.name} className={f.phone === c.phone ? 'on' : ''} onClick={() => f.pick(c)}>
+                        <span style={{ background: c.color }}>{c.name[0]}</span>{c.name}
+                      </button>
+                    ))}
+                  </div>
+                  <label className="a-field"><small>Имя</small><input value={f.name} onChange={(e) => f.setName(e.target.value)} placeholder="Например, Мама" /></label>
+                  <label className="a-field"><small>Телефон</small><input value={f.phone} onChange={(e) => f.setPhone(e.target.value)} inputMode="tel" placeholder="+375 29 000-00-00" /></label>
+                  <button className="a-btn red" onClick={f.add}>Добавить в семью</button>
+                </div>
+              ) : k.family.length < FAMILY_MAX && (
+                <button className="a-btn gray" onClick={() => f.setAdding(true)}><Icon name="plus" size={18} /> Добавить близкого</button>
+              )}
+              <button className="a-reset" onClick={() => arm(f.cancel)}>{armed ? 'Нажмите ещё раз, чтобы отключить' : 'Отключить Премиум'}</button>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 /** Строка настройки: подпись и сегменты, всё на виду — без раскрытия. */
 function Tune({ label, items, cur, lab, set }) {
   return (
@@ -644,7 +770,7 @@ function Tune({ label, items, cur, lab, set }) {
 
 /* ───────────── Профиль ───────────── */
 export function Profile({ ctx }) {
-  const { d, commit, pop, setSheet, showToast, reset, resetArmed, setLocked } = ctx;
+  const { d, k, commit, push, pop, setSheet, showToast, reset, resetArmed, setLocked } = ctx;
   const set = (k, v) => commit((s) => ({ ...s, settings: { ...s.settings, [k]: v } }));
   return (
     <>
@@ -659,6 +785,7 @@ export function Profile({ ctx }) {
             <CabRow icon="grid" label="Мои продукты" sub={(3 + d.products.length) + ' продукта'} onClick={() => setSheet('products')} />
             <CabRow icon="doc" label="Реквизиты счёта" sub="BY20 ALFA 3014 ••••" onClick={() => setSheet('requisites')} />
             <CabRow icon="gift" label="Альфа-бонусы" sub="Кэшбэк и KOPI" onClick={() => setSheet('cashback')} />
+            <CabRow icon="users" label="KOPI Премиум" sub={k.premium ? 'В семье ' + (k.family.length + 1) + ' чел.' : 'Копите всей семьёй'} onClick={() => push({ id: 'premium' })} />
             <CabRow icon="pin" label="Банк на карте" onClick={() => setSheet('map')} />
           </div>
           <h2 className="a-h2">Настройки</h2>

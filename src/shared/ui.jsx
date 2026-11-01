@@ -60,6 +60,24 @@ export function Sheet({ open, onClose, title, subtitle, children }) {
   );
 }
 
+/** Карта тарифа «Премиум»: матовый графит и строгая типографика, одна на оба приложения. */
+export function PremiumCard({ label, value }) {
+  return (
+    <div className="prem-card">
+      <div className="prem-card-top"><b>KOPI</b><span>PREMIUM</span></div>
+      <div className="prem-card-bottom">
+        <small>{label}</small>
+        <strong>{value}</strong>
+      </div>
+    </div>
+  );
+}
+
+/** Миниатюра той же карты для строк меню. */
+export function PremiumMark() {
+  return <span className="prem-mark" aria-hidden="true"><i /></span>;
+}
+
 export function Switch({ on, onChange, label }) {
   return (
     <button

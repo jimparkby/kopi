@@ -2,17 +2,17 @@ import { useEffect, useState } from 'react';
 import { fmt } from '../shared/format.js';
 import { FALLBACK, useRates } from '../shared/rates.js';
 import { usePersisted, useToast, useArmed } from '../shared/hooks.js';
-import { useKopi, kopiOp, kopiRound, kopiValue, kq, resetKopi } from '../shared/kopi.js';
+import { useKopi, kopiOp, kopiPut, kopiRound, kopiValue, kq, resetKopi } from '../shared/kopi.js';
 import { Icon, Solid } from '../shared/icons.jsx';
 import { Phone, Toast } from '../shared/ui.jsx';
 import { ALFA_KEY, fresh, isValid, applyPay } from './model.js';
 import { WB_KEY } from '../whitebird/model.js';
-import { Home, Payments, History, Dialogs, Showcase, Chat, Kopi, Profile, Logo } from './screens.jsx';
+import { Home, Payments, History, Dialogs, Showcase, Chat, Kopi, Premium, Profile, Logo } from './screens.jsx';
 import { Subscriptions, AddAuto, AddFromHistory, RegForm } from './regular.jsx';
 import { SheetHost } from './sheets.jsx';
 import './alfa.css';
 
-const LAYERS = ['subs', 'addAuto', 'addHist', 'regForm', 'kopi', 'chat', 'profile'];
+const LAYERS = ['subs', 'addAuto', 'addHist', 'regForm', 'kopi', 'premium', 'chat', 'profile'];
 const NAV = [
   ['pay', 'pay', 'Платежи'],
   ['hist', 'clock', 'История'],
@@ -26,8 +26,9 @@ export default function AlfaApp() {
   const [k, setK] = useKopi();
   const rates = useRates();
   const R = rates || FALLBACK;
-  // Настройки сдачи живут в общей связке KOPI; без подключения сдачи нет (множитель 0).
-  const d = { ...raw, step: k.step, mult: k.linked ? k.mult : 0, asset: k.asset };
+  // Настройки сдачи живут в общей связке KOPI.
+  const d = { ...raw, asset: k.asset };
+  const up = (a) => kopiRound(k, a);
   const [tab, setTab] = useState('home');
   const [stack, setStack] = useState([]); // экраны поверх вкладок
   const [sheet, setSheet] = useState(null);
@@ -65,20 +66,23 @@ export default function AlfaApp() {
       n = applyPay(n, x.name, x.a, t + i * 2, op ? op.roundup : 0, x.cat, x.regId);
       if (op) kops.unshift(op);
       total += x.a;
-      rows.push({ name: x.name, amt: fmt(x.a) + ' BYN', kopi: op ? '+' + fmt(op.roundup) + ' BYN → WhiteBird' : 'без сдачи' });
+      rows.push({ name: x.name, amt: fmt(x.a) + ' BYN', kopi: op ? '+' + fmt(op.roundup) + ' BYN → ' + (k.auto ? 'WhiteBird' : 'копилка') : 'без сдачи' });
     });
     const kopi = kops.reduce((s, o) => s + o.roundup, 0);
     const got = kops.reduce((s, o) => s + o.qty, 0);
     setD(n);
-    if (kops.length) setK((s) => ({ ...s, ops: [...kops, ...s.ops] }));
+    if (kops.length) setK((s) => kopiPut(s, kops));
     setSheet(null);
     setDone({
       total: fmt(total) + ' BYN',
       rows,
       kopi: kopi ? '+' + fmt(kopi) + ' BYN' : null,
+      kopiSub: k.auto ? 'Переведена в WhiteBird' : 'Отложена в копилку',
       note: kopi
-        ? 'Сдача переведена в WhiteBird и сразу обменяна: +' + kq(got, k.asset) + ' ' + k.asset + ' в вашем кошельке.'
-        : k.linked ? 'Сдачи нет: сумма уже круглая.' : 'Подключите KOPI — и сдача с каждой покупки будет превращаться в криптовалюту в WhiteBird.',
+        ? k.auto
+          ? 'Сумма переведена в WhiteBird и сразу обменяна: +' + kq(got, k.asset) + ' ' + k.asset + ' в вашем кошельке.'
+          : 'Автоинвестирование выключено: сумма ждёт в копилке KOPI, монету купите сами, когда захотите.'
+        : k.linked ? (k.mode === 'pct' ? 'Сумма слишком мала: отчисление меньше копейки.' : 'Сдачи нет: сумма уже круглая.') : 'Подключите KOPI — и сдача с каждой покупки будет превращаться в криптовалюту в WhiteBird.',
     });
   };
 
@@ -92,7 +96,7 @@ export default function AlfaApp() {
     });
 
   const ctx = {
-    d, setD, k, setK, R, p, tab, go, push, pop, toSubs, stack, commit, sheet, setSheet, showToast, payMany, reset, resetArmed, setLocked,
+    d, setD, k, setK, up, R, p, tab, go, push, pop, toSubs, stack, commit, sheet, setSheet, showToast, payMany, reset, resetArmed, setLocked,
   };
   const unread = k.ops.filter((o) => o.t > raw.readAt).length;
   const blueTop = tab !== 'shop' && stack.length === 0;
@@ -129,6 +133,7 @@ export default function AlfaApp() {
                 {id === 'addHist' && <AddFromHistory ctx={ctx} screen={s} />}
                 {id === 'regForm' && <RegForm ctx={ctx} screen={s} key={JSON.stringify(s)} />}
                 {id === 'kopi' && <Kopi ctx={ctx} />}
+                {id === 'premium' && <Premium ctx={ctx} />}
                 {id === 'chat' && <Chat ctx={ctx} />}
                 {id === 'profile' && <Profile ctx={ctx} />}
               </>
@@ -167,7 +172,7 @@ function Done({ done, onClose }) {
         {done?.kopi && (
           <div className="a-row static">
             <span className="a-sq kopi sm">K</span>
-            <span className="a-row-main"><span><b>Сдача в KOPI</b></span><small>Переведена в WhiteBird</small></span>
+            <span className="a-row-main"><span><b>Сдача в KOPI</b></span><small>{done.kopiSub}</small></span>
             <b className="k">{done.kopi}</b>
           </div>
         )}

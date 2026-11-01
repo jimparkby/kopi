@@ -1624,3 +1624,49 @@
 .w-example.inset {
   background: var(--field);
 }
+
+/* KOPI: автоинвестирование и раздел «Премиум» */
+.w-auto {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.w-banner.prem {
+  background: linear-gradient(155deg, #2b2d30, #17181a);
+  color: #ecebe8;
+  align-items: center;
+}
+.w-prem-row {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.w-fam-bar {
+  display: block;
+  height: 4px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: var(--chip);
+  overflow: hidden;
+}
+.w-fam-bar em {
+  display: block;
+  height: 100%;
+}
+.w-fam-acts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.w-mini-btn {
+  border: none;
+  background: var(--chip);
+  color: inherit;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 600;
+}

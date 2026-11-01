@@ -2388,3 +2388,112 @@
   line-height: 1.45;
   color: var(--muted);
 }
+
+/* KOPI: процентная шкала, автоинвестирование, копилка */
+.a-ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--chip);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.a-ladder span {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.a-ladder i {
+  flex: 1;
+  font-style: normal;
+  color: var(--muted);
+}
+.a-ladder small {
+  width: 48px;
+  text-align: right;
+  color: var(--muted);
+}
+.a-auto {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 12px;
+}
+.a-saved {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+}
+.a-saved .a-btn {
+  flex: none;
+  width: auto;
+  padding: 0 16px;
+}
+
+/* Раздел «Премиум» */
+.a-prem-price {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  font-size: 15px;
+}
+.a-prem-price span {
+  display: flex;
+  justify-content: space-between;
+}
+.a-prem-price i {
+  font-style: normal;
+  color: var(--muted);
+}
+.a-btn.a-btn-prem {
+  background: #17181a;
+  color: #fff;
+}
+.a-prem-row {
+  background: var(--card);
+  border-radius: 16px;
+}
+.a-fam .a-row-main {
+  min-width: 0;
+}
+.a-fam-bar {
+  display: block;
+  height: 4px;
+  margin-top: 5px;
+  border-radius: 2px;
+  background: var(--chip);
+  overflow: hidden;
+}
+.a-fam-bar em {
+  display: block;
+  height: 100%;
+}
+.a-fam-acts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.a-fam-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+.a-fam-form .a-field {
+  background: var(--chip);
+}
+.a-fam-acts .a-pill-btn {
+  padding: 6px 10px;
+  min-height: 0;
+  height: auto;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--chip);
+  color: var(--fg);
+}

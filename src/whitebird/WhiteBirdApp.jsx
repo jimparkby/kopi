@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmt, fmtInt, pct, usd, parseAmount } from '../shared/format.js';
-import { useKopi, kopiValue } from '../shared/kopi.js';
+import { useKopi, kopiValue, kopiCalc, kopiRule, kopiLadder, kopiBuySaved, kopiFamily, usePremium, KOPI_RATES, KOPI_STEPS, KOPI_SAMPLES, PREMIUM_PRICE, PREM_PERKS, FAMILY_MAX } from '../shared/kopi.js';
+import { CONTACTS } from '../alfa/model.js';
 import { FALLBACK, useRates } from '../shared/rates.js';
 import { usePersisted, useToast, useArmed } from '../shared/hooks.js';
 import { Icon } from '../shared/icons.jsx';
-import { Phone, Toast, Sheet, Switch } from '../shared/ui.jsx';
+import { Phone, Toast, Sheet, Switch, PremiumCard, PremiumMark } from '../shared/ui.jsx';
 import {
   WB_KEY, COINS, COIN_KEYS, KOPI_ASSETS, KOPI_DESC, PROMO, FEE, FEE_PROMO,
   priceByn, fresh, isValid, short,
@@ -63,7 +64,7 @@ export default function WhiteBirdApp() {
       return { ...s, bal, hist: [...hist, ...s.hist], kopiSync: Math.max(...incoming.map((o) => o.t)) };
     });
     const sum = incoming.reduce((t, o) => t + o.roundup, 0);
-    showToast('Из Альфа Банка: сдача ' + fmt(sum) + ' BYN', 'Куплено и зачислено в кошелёк · ' + incoming.length + ' покуп' + (incoming.length === 1 ? 'ка' : 'ки'));
+    showToast('KOPI: ' + fmt(sum) + ' BYN', 'Куплено и зачислено в кошелёк · ' + incoming.length + ' покуп' + (incoming.length === 1 ? 'ка' : 'ки'));
   }, [k.ops]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Переход из Альфы кнопкой «Открыть WhiteBird» — сразу показываем KOPI.
@@ -134,6 +135,7 @@ export default function WhiteBirdApp() {
       <Screen open={screen === 'profile'}><Profile ctx={ctx} /></Screen>
       <Screen open={screen === 'methods'}><Methods ctx={ctx} /></Screen>
       <Screen open={screen === 'kopi'}><Kopi ctx={ctx} /></Screen>
+      <Screen open={screen === 'premium'}><Premium ctx={ctx} /></Screen>
       <Screen open={screen === 'order'}>{order && <Order ctx={ctx} />}</Screen>
 
       <Toast toast={toast} badge="K" />
@@ -204,11 +206,19 @@ function Home({ ctx }) {
           <b>{k.linked ? 'KOPI: со сдачи куплено на ' + fmt(kp.value) + ' BYN' : 'Новое: KOPI — крипто со сдачи'}</b>
           <span>
             {k.linked
-              ? last ? 'Последнее: ' + last.merchant + ' +' + fmt(last.roundup) + ' BYN → ' + cq(last.qty, last.asset) + ' ' + last.asset : 'Платите картой Альфа Банка — сдача купит ' + k.asset
+              ? last ? 'Последнее: ' + last.merchant + ' +' + fmt(last.roundup) + ' BYN → ' + cq(last.qty, last.asset) + ' ' + last.asset : kp.saved ? 'В копилке ' + fmt(kp.saved) + ' BYN' : 'Платите картой Альфа Банка — сдача купит ' + k.asset
               : 'Сдача с покупок по карте Альфа Банка станет BTC, ETH или USDT'}
           </span>
         </span>
         <span className="w-banner-k">K</span>
+      </button>
+
+      <button className="w-banner prem" onClick={() => open('premium')}>
+        <span className="w-banner-text">
+          <b>KOPI Премиум</b>
+          <span>{k.premium ? 'В семье ' + (k.family.length + 1) + ' чел. · ' + fmt(kp.value + kp.saved) + ' BYN' : 'Копите на крипту всей семьёй'}</span>
+        </span>
+        <PremiumMark />
       </button>
 
       <div className="w-tabs">
@@ -253,7 +263,7 @@ function Home({ ctx }) {
             ))}
             <button className="w-row" onClick={() => open('kopi')}>
               <span className="w-coin k">K</span>
-              <span className="w-main"><span className="b">Карта Альфа Банка •••• {k.card}</span><small>сдача сразу покупает {k.asset}</small></span>
+              <span className="w-main"><span className="b">Карта Альфа Банка •••• {k.card}</span><small>{k.auto ? 'сдача сразу покупает ' + k.asset : 'сумма копится в копилке'}</small></span>
               <Icon name="right" size={18} className="w-chev" />
             </button>
           </>
@@ -601,7 +611,7 @@ const openAlfa = () => {
 };
 
 function Kopi({ ctx }) {
-  const { k, setK, R, kp, setScreen, showToast, later } = ctx;
+  const { k, setK, R, kp, open, setScreen, showToast, later } = ctx;
   const [linking, setLinking] = useState(false);
   const [setup, setSetup] = useState(false);
   const [armed, arm] = useArmed();
@@ -620,6 +630,13 @@ function Kopi({ ctx }) {
   };
 
   const held = KOPI_ASSETS.filter((a) => kp.h[a].qty > 0);
+  const sample = kopiCalc(k, 640);
+  const savedPanel = kp.saved > 0 && (
+    <div className="w-panel">
+      <div className="w-panel-row"><span>В копилке, ждёт покупки</span><b>{fmt(kp.saved)} BYN</b></div>
+      <button className="w-btn primary sm" onClick={() => { setK((s) => kopiBuySaved(s, R, Date.now())); }}>Купить {k.asset} на всю сумму</button>
+    </div>
+  );
 
   return (
     <>
@@ -639,7 +656,8 @@ function Kopi({ ctx }) {
                 <span className="w-radio" />
               </div>
             </div>
-            <div className="w-example"><span>Кофе 6,40 → 7,00</span><b>+0,60 BYN → {k.asset}</b></div>
+            <div className="w-example"><span>Кофе {fmt(640)} → {fmt(640 + sample)}</span><b>+{fmt(sample)} BYN → {k.asset}</b></div>
+            {savedPanel}
             <button className="w-btn primary" onClick={link} disabled={linking}>
               {linking && <span className="spinner" />}
               {linking ? 'Подключаем…' : 'Подключить KOPI к •••• ' + k.card}
@@ -668,9 +686,17 @@ function Kopi({ ctx }) {
 
             <div className="w-panel">
               <div className="w-panel-row"><span>Сдача приходит с карты</span><span>Альфа Банк •••• {k.card}</span></div>
-              <div className="w-example inset"><span>Покупка → сдача → {k.asset}</span><b>сразу</b></div>
+              <div className="w-example inset"><span>Покупка → сдача → {k.auto ? k.asset : 'копилка'}</span><b>{k.auto ? 'сразу' : 'купите сами'}</b></div>
               <button className="w-btn primary sm" onClick={openAlfa}>Оплатить картой в Альфа Банке</button>
             </div>
+
+            {savedPanel}
+
+            <button className="w-menu-row w-prem-row" onClick={() => open('premium')}>
+              <PremiumMark />
+              <span className="w-main"><span>KOPI Премиум</span><small>{k.premium ? 'В семье ' + (k.family.length + 1) + ' чел.' : 'Копите всей семьёй'}</small></span>
+              <Icon name="right" size={18} className="w-chev" />
+            </button>
 
             <div className="w-panel">
               <b className="w-panel-title">Последние покупки со сдачи</b>
@@ -689,7 +715,7 @@ function Kopi({ ctx }) {
 
             <div className={'w-panel w-fold' + (setup ? ' open' : '')}>
               <button className="w-fold-head" onClick={() => setSetup(!setup)} aria-expanded={setup}>
-                <span className="w-main"><b className="w-panel-title">Настройки покупки</b><small>{k.asset} · до {fmtInt(k.step)} BYN · ×{k.mult}</small></span>
+                <span className="w-main"><b className="w-panel-title">Настройки покупки</b><small>{k.asset} · {kopiRule(k)} · {k.auto ? 'авто' : 'вручную'}</small></span>
                 <Icon name="chevDown" size={20} stroke={2.4} className="w-fold-chev" />
               </button>
               {setup && (<>
@@ -701,10 +727,31 @@ function Kopi({ ctx }) {
                   </button>
                 ))}
               </div>
-              <span className="w-label">Округлять до</span>
-              <div className="w-chips">{chip([100, 500, 1000], k.step, 'step', (v) => fmtInt(v) + ' BYN')}</div>
-              <span className="w-label">Множитель сдачи</span>
-              <div className="w-chips">{chip([1, 2, 5], k.mult, 'mult', (v) => '×' + v)}</div>
+              <span className="w-label">Способ</span>
+              <div className="w-chips">{chip(['round', 'pct'], k.mode, 'mode', (v) => (v === 'round' ? 'Округление' : 'Процент'))}</div>
+              {k.mode === 'round' ? (
+                <>
+                  <span className="w-label">Округлять до</span>
+                  <div className="w-chips">{chip(KOPI_STEPS, k.step, 'step', (v) => fmtInt(v) + ' BYN')}</div>
+                  <span className="w-label">Множитель сдачи</span>
+                  <div className="w-chips">{chip([1, 2, 5], k.mult, 'mult', (v) => '×' + v)}</div>
+                </>
+              ) : (
+                <>
+                  <span className="w-label">Максимальный процент</span>
+                  <div className="w-chips">{chip(KOPI_RATES, k.rate, 'rate', (v) => v + '%')}</div>
+                  {kopiLadder(k.rate).map((r) => <div key={r.label} className="w-kv"><span>{r.label}</span><i /><b>{r.rate}%</b></div>)}
+                  <span className="w-fine left">Как прогрессивный налог: каждая ставка действует только на часть покупки внутри своей ступени.</span>
+                  {KOPI_SAMPLES.map((a) => {
+                    const v = kopiCalc(k, a);
+                    return <div key={a} className="w-kv"><span>{fmt(a)} BYN</span><i /><b className="acc">+{fmt(v)}</b><small>{((v / a) * 100).toLocaleString('ru-RU', { maximumFractionDigits: 2 })}%</small></div>;
+                  })}
+                </>
+              )}
+              <div className="w-auto">
+                <span className="w-main"><span>Автоинвестирование</span><small>{k.auto ? 'Крипта покупается сразу при каждой оплате' : 'Сумма копится в BYN, монету покупаете сами'}</small></span>
+                <Switch on={k.auto} onChange={(v) => set({ auto: v })} label="Автоинвестирование" />
+              </div>
               </>)}
             </div>
             <button className="w-reset" onClick={() => arm(() => { set({ linked: false }); showToast('KOPI отключён', 'Купленные монеты остались в кошельке'); })}>
@@ -717,9 +764,86 @@ function Kopi({ ctx }) {
   );
 }
 
+/* ───────────────── Премиум ───────────────── */
+function Premium({ ctx }) {
+  const { k, setK, R, kp, open, setScreen, showToast } = ctx;
+  const f = usePremium(k, setK, R, showToast);
+  const [armed, arm] = useArmed();
+  const fam = kopiFamily(k);
+  return (
+    <>
+      <ScreenHead title="KOPI Премиум" onBack={() => setScreen(null)} />
+      <div className="w-body full">
+        <div className="w-screen">
+          {k.premium
+            ? <PremiumCard label="Семейные накопления" value={fmt(kp.value + kp.saved) + ' BYN'} />
+            : <PremiumCard label="Семейный счёт" value={'до ' + (FAMILY_MAX + 1) + ' человек'} />}
+          {!k.premium ? (
+            <>
+              <div className="w-menu">
+                {PREM_PERKS.map(([t, s]) => (
+                  <div key={t} className="w-menu-row static"><span className="w-main"><span>{t}</span><small>{s}</small></span></div>
+                ))}
+              </div>
+              <div className="w-panel">
+                <div className="w-kv"><span>Первые 30 дней</span><i /><b>0 BYN</b></div>
+                <div className="w-kv"><span>Далее в месяц</span><i /><b>{fmt(PREMIUM_PRICE)} BYN</b></div>
+              </div>
+              <button className="w-btn primary" onClick={f.subscribe}>Подключить</button>
+              <span className="w-fine">Отключить можно в любой момент. В демо деньги не списываются.</span>
+            </>
+          ) : (
+            <>
+              {!k.linked && (
+                <div className="w-panel">
+                  <div className="w-panel-row"><span>KOPI не подключён: сдача никуда не пойдёт</span></div>
+                  <button className="w-btn primary sm" onClick={() => open('kopi')}>Подключить KOPI</button>
+                </div>
+              )}
+              <div className="w-panel">
+                <b className="w-panel-title">Семья · {k.family.length + 1} из {FAMILY_MAX + 1}</b>
+                {fam.rows.map((m) => (
+                  <div key={m.id} className="w-hold">
+                    <span className="w-coin" style={{ width: 34, height: 34, background: m.color, fontSize: 14 }}>{m.name[0]}</span>
+                    <span className="w-main">
+                      <span>{m.name}{m.gone ? ' (не в семье)' : ''}</span>
+                      <small>{fmt(m.sum)} BYN · {m.share}%</small>
+                      <i className="w-fam-bar"><em style={{ width: m.share + '%', background: m.color }} /></i>
+                    </span>
+                    {!m.me && !m.gone && (
+                      <span className="w-fam-acts">
+                        <button className="w-mini-btn" onClick={() => f.buy(m)}>Покупка</button>
+                        <button className="w-icon-btn" onClick={() => f.remove(m)} aria-label={'Убрать: ' + m.name}><Icon name="close" size={16} /></button>
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {k.family.length > 0 && <span className="w-fine">«Покупка» имитирует оплату картой родственника, ведь в демо один телефон.</span>}
+              {f.adding ? (
+                <div className="w-panel">
+                  <div className="w-chips scroll">
+                    {CONTACTS.map((c) => <button key={c.name} className={f.phone === c.phone ? 'on' : ''} onClick={() => f.pick(c)}>{c.name}</button>)}
+                  </div>
+                  <label className="w-field"><small>Имя</small><input value={f.name} onChange={(e) => f.setName(e.target.value)} placeholder="Например, Мама" /></label>
+                  <label className="w-field"><small>Телефон</small><input value={f.phone} onChange={(e) => f.setPhone(e.target.value)} inputMode="tel" placeholder="+375 29 000-00-00" /></label>
+                  <button className="w-btn primary sm" onClick={f.add}>Добавить в семью</button>
+                </div>
+              ) : k.family.length < FAMILY_MAX && (
+                <button className="w-btn soft" onClick={() => f.setAdding(true)}>Добавить близкого</button>
+              )}
+              <button className="w-reset" onClick={() => arm(f.cancel)}>{armed ? 'Нажмите ещё раз, чтобы отключить' : 'Отключить Премиум'}</button>
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ───────────────── Профиль ───────────────── */
 function Profile({ ctx }) {
-  const { d, setScreen, open, setSheet } = ctx;
+  const { k, setScreen, open, setSheet } = ctx;
   return (
     <>
       <ScreenHead
@@ -751,6 +875,7 @@ function Profile({ ctx }) {
             <MenuRow icon="bell" label="Уведомления" onClick={() => setSheet('notifset')} />
             <MenuRow icon="card" label="Способы оплаты" onClick={() => open('methods')} />
             <MenuRow kopi label="KOPI · крипто со сдачи" sub={k.linked ? 'Подключён · Альфа Банк •••• ' + k.card : 'Не подключён'} onClick={() => open('kopi')} />
+            <MenuRow icon="users" label="KOPI Премиум" sub={k.premium ? 'В семье ' + (k.family.length + 1) + ' чел.' : 'Копите всей семьёй'} onClick={() => open('premium')} />
             <MenuRow icon="gear" label="Настройки" onClick={() => setSheet('settings')} />
             <MenuRow icon="doc" label="Информация" onClick={() => setSheet('info')} />
           </div>
@@ -1296,7 +1421,7 @@ function NotifSetSheet({ ctx }) {
     <div className="w-menu">
       <div className="w-menu-row static"><Icon name="bell" size={20} /><span className="w-main"><span>Push-уведомления</span></span><Switch on={d.settings.push} onChange={(v) => set('push', v)} label="Push" /></div>
       <div className="w-menu-row static"><Icon name="send" size={20} /><span className="w-main"><span>Письма на email</span></span><Switch on={d.settings.email} onChange={(v) => set('email', v)} label="Email" /></div>
-      <div className="w-menu-row static"><span className="w-k-mini">K</span><span className="w-main"><span>Покупки KOPI</span><small>Сообщать о пакетных покупках</small></span><Switch on={d.settings.kopi !== false} onChange={(v) => set('kopi', v)} label="KOPI" /></div>
+      <div className="w-menu-row static"><span className="w-k-mini">K</span><span className="w-main"><span>Покупки KOPI</span><small>Сообщать о покупках со сдачи</small></span><Switch on={d.settings.kopi !== false} onChange={(v) => set('kopi', v)} label="KOPI" /></div>
     </div>
   );
 }

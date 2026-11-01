@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { fmt, parseAmount, roundUp } from '../shared/format.js';
+import { fmt, parseAmount } from '../shared/format.js';
 import { Icon } from '../shared/icons.jsx';
 import { Switch } from '../shared/ui.jsx';
 import { REG_TYPES, AUTO_CATS, CAT_COLORS, occursOn, nextDate, monthlyCost } from './model.js';
@@ -42,7 +42,7 @@ export function Subscriptions({ ctx }) {
   const live = d.regs.filter((r) => r.active && !r.hidden);
   const kino = live.filter((r) => r.cat === 'Кино');
   const dupName = Object.entries(live.reduce((m, r) => ({ ...m, [r.name]: (m[r.name] || 0) + 1 }), {})).find(([, n]) => n > 1)?.[0];
-  const kopiMonth = live.filter((r) => r.kopi).reduce((t, r) => t + roundUp(r.amt, d.step, d.mult), 0);
+  const kopiMonth = live.filter((r) => r.kopi).reduce((t, r) => t + ctx.up(r.amt), 0);
   const hints = [
     kino.length > 0 && { key: 'kino', title: fmt(kino.reduce((t, r) => t + monthlyCost(r), 0)) + ' BYN', text: 'Вы тратите на кино ежемесячно', icons: kino, onClick: () => setType('sub') },
     dupName && { key: 'dup', title: 'Повтор', text: 'Похоже, у вас 2 подписки на один сервис', icons: live.filter((r) => r.name === dupName), onClick: () => setSheet('reg:' + live.filter((r) => r.name === dupName)[1].id) },
@@ -130,7 +130,7 @@ export function Subscriptions({ ctx }) {
                 <span className="a-row-end">
                   <b>{fmt(r.amt)} BYN{per(r)}</b>
                   {!disabledView && r.next && <small>{ddmm(r.next)}</small>}
-                  {!disabledView && r.kopi && roundUp(r.amt, d.step, d.mult) > 0 && <small className="k">+{fmt(roundUp(r.amt, d.step, d.mult))} в KOPI</small>}
+                  {!disabledView && r.kopi && ctx.up(r.amt) > 0 && <small className="k">+{fmt(ctx.up(r.amt))} в KOPI</small>}
                 </span>
               </button>
             ))}
@@ -263,7 +263,7 @@ export function RegForm({ ctx, screen }) {
             <label className="a-field"><small>День списания (1–28)</small><input value={day} onChange={(e) => setDay(e.target.value.replace(/\D/g, '').slice(0, 2))} inputMode="numeric" /></label>
           )}
           <div className="a-field row">
-            <span><small>KOPI</small><b>Округлять в KOPI{k ? ' · +' + fmt(roundUp(k, d.step, d.mult)) + ' BYN' : ''}</b></span>
+            <span><small>KOPI</small><b>Округлять в KOPI{k ? ' · +' + fmt(ctx.up(k)) + ' BYN' : ''}</b></span>
             <Switch on={kopi} onChange={setKopi} label="Округлять в KOPI" />
           </div>
           <button className="a-btn red" onClick={save}>Сохранить</button>

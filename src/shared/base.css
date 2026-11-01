@@ -406,3 +406,66 @@ a {
     animation: none !important;
   }
 }
+
+/* Тариф «Премиум» */
+.prem-card {
+  aspect-ratio: 1.586;
+  flex: none;
+  border-radius: 16px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #ecebe8;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 3px),
+    linear-gradient(155deg, #2b2d30, #17181a 62%, #101112);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 10px 24px rgba(0, 0, 0, 0.22);
+}
+.prem-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.prem-card-top b {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+.prem-card-top span {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.26em;
+  color: #a3a29e;
+}
+.prem-card-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.prem-card-bottom small {
+  font-size: 12px;
+  color: #a3a29e;
+}
+.prem-card-bottom strong {
+  font-size: 27px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.prem-mark {
+  flex: none;
+  width: 40px;
+  height: 26px;
+  border-radius: 5px;
+  display: flex;
+  align-items: flex-end;
+  padding: 5px;
+  background: linear-gradient(155deg, #2b2d30, #111214);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.prem-mark i {
+  width: 14px;
+  height: 2px;
+  background: #a3a29e;
+}
