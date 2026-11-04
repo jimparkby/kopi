@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fmt, fmtInt, pct, when } from '../shared/format.js';
-import { kq, kopiCalc, kopiRule, kopiNow, kopiPlan, kopiSettle, KOPI_THRESHOLDS, kopiMonthly, kopiLadder, kopiBuySaved, kopiFamily, usePremium, KOPI_RATES, KOPI_STEPS, KOPI_SAMPLES, PREMIUM_PRICE, PREM_PERKS, FAMILY_MAX } from '../shared/kopi.js';
+import { kq, kopiCalc, kopiRule, kopiNow, kopiPlan, kopiSettle, KOPI_THRESHOLDS, KOPI_MIN, kopiMonthly, kopiLadder, kopiBuySaved, kopiFamily, usePremium, KOPI_RATES, KOPI_STEPS, KOPI_SAMPLES, PREMIUM_PRICE, PREM_PERKS, FAMILY_MAX } from '../shared/kopi.js';
 import { useArmed } from '../shared/hooks.js';
 import { Icon, Solid } from '../shared/icons.jsx';
 import { Switch, PremiumCard, PremiumMark } from '../shared/ui.jsx';
@@ -533,7 +533,7 @@ export function Kopi({ ctx }) {
   const savedCard = p.saved > 0 && (
     <div className="a-card a-saved">
       <span className="a-row-main"><small>В копилке · {kopiPlan(k)}</small><b>{fmt(p.saved)}{k.auto && k.threshold ? ' из ' + fmtInt(k.threshold) : ''} BYN</b></span>
-      <button className="a-btn red sm" onClick={() => { setK((s) => kopiBuySaved(s, R, Date.now())); showToast('Куплено: ' + k.asset, 'На ' + fmt(p.saved) + ' BYN по текущему курсу'); }}>Купить {k.asset}</button>
+      <button className="a-btn red sm" disabled={p.saved < KOPI_MIN} onClick={() => { setK((s) => kopiBuySaved(s, R, Date.now())); showToast('Куплено: ' + k.asset, 'На ' + fmt(p.saved) + ' BYN по текущему курсу'); }}>{p.saved < KOPI_MIN ? 'От ' + fmtInt(KOPI_MIN) + ' BYN' : 'Купить ' + k.asset}</button>
     </div>
   );
 
@@ -639,7 +639,7 @@ export function Kopi({ ctx }) {
               <span className="a-row-main"><span>Автопокупка</span><small>{k.auto ? 'WhiteBird сам покупает монету' : 'Сумма копится в BYN, монету покупаете сами'}</small></span>
               <Switch on={k.auto} onChange={(v) => setK((s) => kopiSettle({ ...s, auto: v }, R, Date.now()))} label="Автопокупка" />
             </div>
-            {k.auto && <Tune label="Покупать, когда в копилке" items={KOPI_THRESHOLDS} cur={k.threshold} lab={(v) => (v ? fmtInt(v) + ' BYN' : 'Сразу')} set={(v) => setK((s) => kopiSettle({ ...s, threshold: v }, R, Date.now()))} />}
+            {k.auto && <Tune label="Покупать, когда в копилке" items={KOPI_THRESHOLDS} cur={k.threshold} lab={(v) => fmtInt(v) + ' BYN'} set={(v) => setK((s) => kopiSettle({ ...s, threshold: v }, R, Date.now()))} />}
           </div>
 
           <h2 className="a-h2">Сдача и покупки</h2>

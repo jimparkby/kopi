@@ -17,8 +17,10 @@ export const KOPI_TIERS = [{ upto: 5000, rate: 3 }, { upto: 20000, rate: 5 }, { 
 export const KOPI_RATES = [3, 5, 10];
 export const KOPI_STEPS = [100, 500, 1000];
 export const KOPI_SAMPLES = [640, 5000, 10000, 45000];
-// Автопокупка: когда в копилке набирается порог, WhiteBird покупает монету на всю сумму. 0 — покупать с каждой оплаты.
-export const KOPI_THRESHOLDS = [0, 2000, 6000, 10000];
+// Минимальное пополнение WhiteBird — 60 BYN, поэтому монета покупается только из копилки и не раньше этой суммы.
+export const KOPI_MIN = 6000;
+// Автопокупка: когда в копилке набирается порог, WhiteBird покупает монету на всю сумму.
+export const KOPI_THRESHOLDS = [6000, 10000, 20000];
 
 export const PREMIUM_PRICE = 990;
 export const FAMILY_MAX = 5;
@@ -90,7 +92,7 @@ export function kopiOp(k, R, merchant, a, t, who = null) {
 export const kopiNow = (k) => k.auto && !k.threshold;
 
 /** Что будет с отложенным: «купим сразу», «купим при 60 BYN» или «купите сами». */
-export const kopiPlan = (k) => (!k.auto ? 'монету покупаете сами' : k.threshold ? 'автопокупка при ' + k.threshold / 100 + ' BYN' : 'монета покупается сразу');
+export const kopiPlan = (k) => (!k.auto ? 'монету покупаете сами от ' + KOPI_MIN / 100 + ' BYN' : k.threshold ? 'автопокупка при ' + k.threshold / 100 + ' BYN' : 'монета покупается сразу');
 
 /** Автопокупка: если копилка дошла до порога, покупаем на всю сумму. Вызывается и после смены настроек. */
 export function kopiSettle(k, R, t) {
@@ -107,6 +109,7 @@ export const kopiBought = (before, after) => after.ops.slice(0, after.ops.length
 
 /** Купить монету на всю копилку по текущему курсу. Отдельная операция на каждого, чтобы не потерять вклады семьи. */
 export function kopiBuySaved(k, R, t) {
+  if (k.saved.reduce((s, o) => s + o.roundup, 0) < KOPI_MIN) return k;
   const groups = new Map();
   k.saved.forEach((o) => {
     const g = groups.get(o.who) || { who: o.who, whoName: o.whoName, sum: 0 };
@@ -210,7 +213,7 @@ const listeners = new Set();
 const load = () => {
   try {
     const v = JSON.parse(localStorage.getItem(KOPI_KEY));
-    if (v && v.v === 1 && Array.isArray(v.ops)) return { ...freshKopi(), ...v };
+    if (v && v.v === 1 && Array.isArray(v.ops)) return { ...freshKopi(), ...v, threshold: Math.max(KOPI_MIN, v.threshold || 0) };
   } catch (e) { /* приватный режим */ }
   return freshKopi();
 };

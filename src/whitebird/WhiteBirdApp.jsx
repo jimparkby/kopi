@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmt, fmtInt, pct, usd, parseAmount } from '../shared/format.js';
-import { useKopi, kopiValue, kopiCalc, kopiRule, kopiNow, kopiPlan, kopiSettle, KOPI_THRESHOLDS, kopiLadder, kopiBuySaved, kopiFamily, usePremium, KOPI_RATES, KOPI_STEPS, KOPI_SAMPLES, PREMIUM_PRICE, PREM_PERKS, FAMILY_MAX } from '../shared/kopi.js';
+import { useKopi, kopiValue, kopiCalc, kopiRule, kopiNow, kopiPlan, kopiSettle, KOPI_THRESHOLDS, KOPI_MIN, kopiLadder, kopiBuySaved, kopiFamily, usePremium, KOPI_RATES, KOPI_STEPS, KOPI_SAMPLES, PREMIUM_PRICE, PREM_PERKS, FAMILY_MAX } from '../shared/kopi.js';
 import { CONTACTS } from '../alfa/model.js';
 import { FALLBACK, useRates } from '../shared/rates.js';
 import { usePersisted, useToast, useArmed } from '../shared/hooks.js';
@@ -634,7 +634,9 @@ function Kopi({ ctx }) {
   const savedPanel = kp.saved > 0 && (
     <div className="w-panel">
       <div className="w-panel-row"><span>В копилке · {kopiPlan(k)}</span><b>{fmt(kp.saved)}{k.auto && k.threshold ? ' из ' + fmtInt(k.threshold) : ''} BYN</b></div>
-      <button className="w-btn primary sm" onClick={() => { setK((s) => kopiBuySaved(s, R, Date.now())); }}>Купить {k.asset} на всю сумму</button>
+      <button className="w-btn primary sm" disabled={kp.saved < KOPI_MIN} onClick={() => { setK((s) => kopiBuySaved(s, R, Date.now())); }}>
+        {kp.saved < KOPI_MIN ? 'Купить можно от ' + fmtInt(KOPI_MIN) + ' BYN' : 'Купить ' + k.asset + ' на всю сумму'}
+      </button>
     </div>
   );
 
@@ -756,7 +758,7 @@ function Kopi({ ctx }) {
                 <>
                   <span className="w-label">Покупать, когда в копилке</span>
                   <div className="w-chips">
-                    {KOPI_THRESHOLDS.map((v) => <button key={v} className={v === k.threshold ? 'on' : ''} onClick={() => setK((s) => kopiSettle({ ...s, threshold: v }, R, Date.now()))}>{v ? fmtInt(v) + ' BYN' : 'Сразу'}</button>)}
+                    {KOPI_THRESHOLDS.map((v) => <button key={v} className={v === k.threshold ? 'on' : ''} onClick={() => setK((s) => kopiSettle({ ...s, threshold: v }, R, Date.now()))}>{fmtInt(v) + ' BYN'}</button>)}
                   </div>
                 </>
               )}
