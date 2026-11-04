@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fmt, fmtInt, pct, usd, parseAmount } from '../shared/format.js';
-import { useKopi, kopiValue, kopiCalc, kopiRule, kopiLadder, kopiBuySaved, kopiFamily, usePremium, KOPI_RATES, KOPI_STEPS, KOPI_SAMPLES, PREMIUM_PRICE, PREM_PERKS, FAMILY_MAX } from '../shared/kopi.js';
+import { useKopi, kopiValue, kopiCalc, kopiRule, kopiNow, kopiPlan, kopiSettle, KOPI_THRESHOLDS, kopiLadder, kopiBuySaved, kopiFamily, usePremium, KOPI_RATES, KOPI_STEPS, KOPI_SAMPLES, PREMIUM_PRICE, PREM_PERKS, FAMILY_MAX } from '../shared/kopi.js';
 import { CONTACTS } from '../alfa/model.js';
 import { FALLBACK, useRates } from '../shared/rates.js';
 import { usePersisted, useToast, useArmed } from '../shared/hooks.js';
@@ -263,7 +263,7 @@ function Home({ ctx }) {
             ))}
             <button className="w-row" onClick={() => open('kopi')}>
               <span className="w-coin k">K</span>
-              <span className="w-main"><span className="b">Карта Альфа Банка •••• {k.card}</span><small>{k.auto ? 'сдача сразу покупает ' + k.asset : 'сумма копится в копилке'}</small></span>
+              <span className="w-main"><span className="b">Карта Альфа Банка •••• {k.card}</span><small>{kopiNow(k) ? 'сдача сразу покупает ' + k.asset : 'копилка · ' + kopiPlan(k)}</small></span>
               <Icon name="right" size={18} className="w-chev" />
             </button>
           </>
@@ -633,7 +633,7 @@ function Kopi({ ctx }) {
   const sample = kopiCalc(k, 640);
   const savedPanel = kp.saved > 0 && (
     <div className="w-panel">
-      <div className="w-panel-row"><span>В копилке, ждёт покупки</span><b>{fmt(kp.saved)} BYN</b></div>
+      <div className="w-panel-row"><span>В копилке · {kopiPlan(k)}</span><b>{fmt(kp.saved)}{k.auto && k.threshold ? ' из ' + fmtInt(k.threshold) : ''} BYN</b></div>
       <button className="w-btn primary sm" onClick={() => { setK((s) => kopiBuySaved(s, R, Date.now())); }}>Купить {k.asset} на всю сумму</button>
     </div>
   );
@@ -686,7 +686,7 @@ function Kopi({ ctx }) {
 
             <div className="w-panel">
               <div className="w-panel-row"><span>Сдача приходит с карты</span><span>Альфа Банк •••• {k.card}</span></div>
-              <div className="w-example inset"><span>Покупка → сдача → {k.auto ? k.asset : 'копилка'}</span><b>{k.auto ? 'сразу' : 'купите сами'}</b></div>
+              <div className="w-example inset"><span>Покупка → сдача → {kopiNow(k) ? k.asset : 'копилка'}</span><b>{kopiNow(k) ? 'сразу' : k.auto ? 'при ' + fmtInt(k.threshold) + ' BYN' : 'купите сами'}</b></div>
               <button className="w-btn primary sm" onClick={openAlfa}>Оплатить картой в Альфа Банке</button>
             </div>
 
@@ -715,7 +715,7 @@ function Kopi({ ctx }) {
 
             <div className={'w-panel w-fold' + (setup ? ' open' : '')}>
               <button className="w-fold-head" onClick={() => setSetup(!setup)} aria-expanded={setup}>
-                <span className="w-main"><b className="w-panel-title">Настройки покупки</b><small>{k.asset} · {kopiRule(k)} · {k.auto ? 'авто' : 'вручную'}</small></span>
+                <span className="w-main"><b className="w-panel-title">Настройки покупки</b><small>{k.asset} · {kopiRule(k)} · {k.auto ? (k.threshold ? 'авто при ' + fmtInt(k.threshold) + ' BYN' : 'сразу') : 'вручную'}</small></span>
                 <Icon name="chevDown" size={20} stroke={2.4} className="w-fold-chev" />
               </button>
               {setup && (<>
@@ -749,9 +749,17 @@ function Kopi({ ctx }) {
                 </>
               )}
               <div className="w-auto">
-                <span className="w-main"><span>Автоинвестирование</span><small>{k.auto ? 'Крипта покупается сразу при каждой оплате' : 'Сумма копится в BYN, монету покупаете сами'}</small></span>
-                <Switch on={k.auto} onChange={(v) => set({ auto: v })} label="Автоинвестирование" />
+                <span className="w-main"><span>Автопокупка</span><small>{k.auto ? 'WhiteBird сам покупает монету' : 'Сумма копится в BYN, монету покупаете сами'}</small></span>
+                <Switch on={k.auto} onChange={(v) => setK((s) => kopiSettle({ ...s, auto: v }, R, Date.now()))} label="Автопокупка" />
               </div>
+              {k.auto && (
+                <>
+                  <span className="w-label">Покупать, когда в копилке</span>
+                  <div className="w-chips">
+                    {KOPI_THRESHOLDS.map((v) => <button key={v} className={v === k.threshold ? 'on' : ''} onClick={() => setK((s) => kopiSettle({ ...s, threshold: v }, R, Date.now()))}>{v ? fmtInt(v) + ' BYN' : 'Сразу'}</button>)}
+                  </div>
+                </>
+              )}
               </>)}
             </div>
             <button className="w-reset" onClick={() => arm(() => { set({ linked: false }); showToast('KOPI отключён', 'Купленные монеты остались в кошельке'); })}>

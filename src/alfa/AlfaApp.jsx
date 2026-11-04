@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { fmt } from '../shared/format.js';
 import { FALLBACK, useRates } from '../shared/rates.js';
 import { usePersisted, useToast, useArmed } from '../shared/hooks.js';
-import { useKopi, kopiOp, kopiPut, kopiRound, kopiValue, kq, resetKopi } from '../shared/kopi.js';
+import { useKopi, kopiOp, kopiPut, kopiNow, kopiBought, kopiRound, kopiValue, kq, resetKopi } from '../shared/kopi.js';
 import { Icon, Solid } from '../shared/icons.jsx';
 import { Phone, Toast } from '../shared/ui.jsx';
 import { ALFA_KEY, fresh, isValid, applyPay } from './model.js';
@@ -66,22 +66,27 @@ export default function AlfaApp() {
       n = applyPay(n, x.name, x.a, t + i * 2, op ? op.roundup : 0, x.cat, x.regId);
       if (op) kops.unshift(op);
       total += x.a;
-      rows.push({ name: x.name, amt: fmt(x.a) + ' BYN', kopi: op ? '+' + fmt(op.roundup) + ' BYN → ' + (k.auto ? 'WhiteBird' : 'копилка') : 'без сдачи' });
+      rows.push({ name: x.name, amt: fmt(x.a) + ' BYN', kopi: op ? '+' + fmt(op.roundup) + ' BYN → ' + (kopiNow(k) ? 'WhiteBird' : 'копилка') : 'без сдачи' });
     });
     const kopi = kops.reduce((s, o) => s + o.roundup, 0);
-    const got = kops.reduce((s, o) => s + o.qty, 0);
+    const next = kops.length ? kopiPut(k, kops, R, t + items.length * 2) : k;
+    // Монеты, купленные этой оплатой: сразу с каждой покупки или автопокупкой при пороге.
+    const bought = kopiNow(k) ? kops : kopiBought(k, next);
+    const got = bought.reduce((s, o) => s + o.qty, 0);
     setD(n);
-    if (kops.length) setK((s) => kopiPut(s, kops));
+    if (kops.length) setK(next);
     setSheet(null);
     setDone({
       total: fmt(total) + ' BYN',
       rows,
       kopi: kopi ? '+' + fmt(kopi) + ' BYN' : null,
-      kopiSub: k.auto ? 'Переведена в WhiteBird' : 'Отложена в копилку',
+      kopiSub: kopiNow(k) ? 'Переведена в WhiteBird' : 'Отложена в копилку',
       note: kopi
-        ? k.auto
-          ? 'Сумма переведена в WhiteBird и сразу обменяна: +' + kq(got, k.asset) + ' ' + k.asset + ' в вашем кошельке.'
-          : 'Автоинвестирование выключено: сумма ждёт в копилке KOPI, монету купите сами, когда захотите.'
+        ? got
+          ? (kopiNow(k) ? 'Сумма переведена в WhiteBird и сразу обменяна' : 'Копилка дошла до ' + fmt(k.threshold) + ' BYN — WhiteBird купил монету на всю сумму') + ': +' + kq(got, k.asset) + ' ' + k.asset + ' в вашем кошельке.'
+          : k.auto
+            ? 'Сумма в копилке: ' + fmt(next.saved.reduce((s, o) => s + o.roundup, 0)) + ' из ' + fmt(k.threshold) + ' BYN. На пороге WhiteBird сам купит ' + k.asset + '.'
+            : 'Автопокупка выключена: сумма ждёт в копилке KOPI, монету купите сами, когда захотите.'
         : k.linked ? (k.mode === 'pct' ? 'Сумма слишком мала: отчисление меньше копейки.' : 'Сдачи нет: сумма уже круглая.') : 'Подключите KOPI — и сдача с каждой покупки будет превращаться в криптовалюту в WhiteBird.',
     });
   };

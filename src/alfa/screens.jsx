@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fmt, fmtInt, pct, when } from '../shared/format.js';
-import { kq, kopiCalc, kopiRule, kopiMonthly, kopiLadder, kopiBuySaved, kopiFamily, usePremium, KOPI_RATES, KOPI_STEPS, KOPI_SAMPLES, PREMIUM_PRICE, PREM_PERKS, FAMILY_MAX } from '../shared/kopi.js';
+import { kq, kopiCalc, kopiRule, kopiNow, kopiPlan, kopiSettle, KOPI_THRESHOLDS, kopiMonthly, kopiLadder, kopiBuySaved, kopiFamily, usePremium, KOPI_RATES, KOPI_STEPS, KOPI_SAMPLES, PREMIUM_PRICE, PREM_PERKS, FAMILY_MAX } from '../shared/kopi.js';
 import { useArmed } from '../shared/hooks.js';
 import { Icon, Solid } from '../shared/icons.jsx';
 import { Switch, PremiumCard, PremiumMark } from '../shared/ui.jsx';
@@ -130,7 +130,7 @@ export function Home({ ctx }) {
             top="KOPI | Сдача в крипто · WhiteBird"
             main={k.linked ? <>{fmt(p.value + p.saved)} <Byn /></> : 'Не подключён'}
             plain={!k.linked}
-            sub={k.linked ? (p.saved ? 'В копилке ' + fmt(p.saved) + ' BYN' : k.ops.length ? 'Покупок со сдачи: ' + k.ops.length + ' · ' + k.asset : k.auto ? 'Оплатите картой — сдача купит ' + k.asset : 'Оплатите картой — сдача пойдёт в копилку') : 'Подключить за 1 шаг'}
+            sub={k.linked ? (p.saved ? 'В копилке ' + fmt(p.saved) + ' BYN' : k.ops.length ? 'Покупок со сдачи: ' + k.ops.length + ' · ' + k.asset : kopiNow(k) ? 'Оплатите картой — сдача купит ' + k.asset : 'Оплатите картой — сдача пойдёт в копилку') : 'Подключить за 1 шаг'}
             subColor="var(--purple)"
             onClick={() => push({ id: 'kopi' })}
           />
@@ -524,15 +524,15 @@ export function Kopi({ ctx }) {
       <Icon name="right" size={16} className="a-flow-arr" />
       <div className="a-flow-step">
         <span className="a-sq sm" style={{ background: '#2470FF', color: '#fff' }}>W</span>
-        <b>{k.auto ? 'WhiteBird' : 'Копилка'}</b>
-        <small>{k.auto ? 'покупает ' + A.code : 'купите сами'}</small>
+        <b>{kopiNow(k) ? 'WhiteBird' : 'Копилка'}</b>
+        <small>{kopiNow(k) ? 'покупает ' + A.code : k.auto ? A.code + ' при ' + fmtInt(k.threshold) + ' BYN' : 'купите сами'}</small>
       </div>
     </div>
   );
 
   const savedCard = p.saved > 0 && (
     <div className="a-card a-saved">
-      <span className="a-row-main"><small>В копилке, ждёт покупки</small><b>{fmt(p.saved)} BYN</b></span>
+      <span className="a-row-main"><small>В копилке · {kopiPlan(k)}</small><b>{fmt(p.saved)}{k.auto && k.threshold ? ' из ' + fmtInt(k.threshold) : ''} BYN</b></span>
       <button className="a-btn red sm" onClick={() => { setK((s) => kopiBuySaved(s, R, Date.now())); showToast('Куплено: ' + k.asset, 'На ' + fmt(p.saved) + ' BYN по текущему курсу'); }}>Купить {k.asset}</button>
     </div>
   );
@@ -636,9 +636,10 @@ export function Kopi({ ctx }) {
             )}
             <span className="a-tune-note">≈ {fmt(kopiMonthly(k))} BYN в месяц при 40 покупках{k.mode === 'pct' ? ' по 25 BYN' : ''}</span>
             <div className="a-auto">
-              <span className="a-row-main"><span>Автоинвестирование</span><small>{k.auto ? 'Крипта покупается сразу при каждой оплате' : 'Сумма копится в BYN, монету покупаете сами'}</small></span>
-              <Switch on={k.auto} onChange={(v) => set({ auto: v })} label="Автоинвестирование" />
+              <span className="a-row-main"><span>Автопокупка</span><small>{k.auto ? 'WhiteBird сам покупает монету' : 'Сумма копится в BYN, монету покупаете сами'}</small></span>
+              <Switch on={k.auto} onChange={(v) => setK((s) => kopiSettle({ ...s, auto: v }, R, Date.now()))} label="Автопокупка" />
             </div>
+            {k.auto && <Tune label="Покупать, когда в копилке" items={KOPI_THRESHOLDS} cur={k.threshold} lab={(v) => (v ? fmtInt(v) + ' BYN' : 'Сразу')} set={(v) => setK((s) => kopiSettle({ ...s, threshold: v }, R, Date.now()))} />}
           </div>
 
           <h2 className="a-h2">Сдача и покупки</h2>

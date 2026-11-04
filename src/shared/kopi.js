@@ -17,6 +17,8 @@ export const KOPI_TIERS = [{ upto: 5000, rate: 3 }, { upto: 20000, rate: 5 }, { 
 export const KOPI_RATES = [3, 5, 10];
 export const KOPI_STEPS = [100, 500, 1000];
 export const KOPI_SAMPLES = [640, 5000, 10000, 45000];
+// Автопокупка: когда в копилке набирается порог, WhiteBird покупает монету на всю сумму. 0 — покупать с каждой оплаты.
+export const KOPI_THRESHOLDS = [0, 2000, 6000, 10000];
 
 export const PREMIUM_PRICE = 990;
 export const FAMILY_MAX = 5;
@@ -30,7 +32,7 @@ const FAMILY_COLORS = ['#F0277A', '#2D9CF0', '#3CC36B', '#F5A623', '#8A5CF6'];
 const FAMILY_BUYS = [['Продукты', 4730], ['Аптека', 2315], ['Такси', 1280], ['Одежда', 12990], ['Кофе', 640]];
 
 export const freshKopi = () => ({
-  v: 1, linked: false, card: '7781', mode: 'round', step: 100, mult: 1, rate: 10, auto: true, asset: 'BTC', ops: [], saved: [], premium: false, family: [],
+  v: 1, linked: false, card: '7781', mode: 'round', step: 100, mult: 1, rate: 10, auto: true, threshold: 6000, asset: 'BTC', ops: [], saved: [], premium: false, family: [],
 });
 
 /** Цена монеты в BYN. */
@@ -84,8 +86,24 @@ export function kopiOp(k, R, merchant, a, t, who = null) {
   return { id: 'k' + t, t, merchant: who ? who.name + ' · ' + merchant : merchant, who: who?.id || null, whoName: who?.name || null, a, roundup: up, asset: k.asset, qty: up / 100 / rate, rate };
 }
 
-/** Зачислить операции: с автоинвестированием монета покупается сразу, без него сумма ждёт в копилке в BYN. */
-export const kopiPut = (k, ops) => (k.auto ? { ...k, ops: [...ops, ...k.ops] } : { ...k, saved: [...ops, ...k.saved] });
+/** Монета покупается с каждой оплаты, без копилки. */
+export const kopiNow = (k) => k.auto && !k.threshold;
+
+/** Что будет с отложенным: «купим сразу», «купим при 60 BYN» или «купите сами». */
+export const kopiPlan = (k) => (!k.auto ? 'монету покупаете сами' : k.threshold ? 'автопокупка при ' + k.threshold / 100 + ' BYN' : 'монета покупается сразу');
+
+/** Автопокупка: если копилка дошла до порога, покупаем на всю сумму. Вызывается и после смены настроек. */
+export function kopiSettle(k, R, t) {
+  if (!k.auto || !k.saved.length) return k;
+  const sum = k.saved.reduce((s, o) => s + o.roundup, 0);
+  return sum >= k.threshold ? kopiBuySaved(k, R, t) : k;
+}
+
+/** Зачислить операции: без порога монета покупается сразу, иначе сумма ждёт в копилке в BYN до порога или до ручной покупки. */
+export const kopiPut = (k, ops, R, t) => (kopiNow(k) ? { ...k, ops: [...ops, ...k.ops] } : kopiSettle({ ...k, saved: [...ops, ...k.saved] }, R, t));
+
+/** Сколько куплено автопокупкой при последнем зачислении: новые пакетные операции. */
+export const kopiBought = (before, after) => after.ops.slice(0, after.ops.length - before.ops.length).filter((o) => o.batch);
 
 /** Купить монету на всю копилку по текущему курсу. Отдельная операция на каждого, чтобы не потерять вклады семьи. */
 export function kopiBuySaved(k, R, t) {
@@ -156,8 +174,10 @@ export function usePremium(k, setK, R, showToast) {
     const [title, a] = FAMILY_BUYS[(k.ops.length + k.saved.length) % FAMILY_BUYS.length];
     const op = kopiOp(k, R, title, a, Date.now(), m);
     if (!op) return showToast('Сдачи нет', 'Сумма покупки уже круглая');
-    setK((s) => kopiPut(s, [op]));
-    showToast(m.name + ': ' + title.toLowerCase() + ' ' + fmt(a) + ' BYN', '+' + fmt(op.roundup) + ' BYN ' + (k.auto ? '→ сразу ' + k.asset : '→ в копилку'));
+    const next = kopiPut(k, [op], R, Date.now());
+    setK(next);
+    const bought = kopiBought(k, next).reduce((t, o) => t + o.roundup, 0);
+    showToast(m.name + ': ' + title.toLowerCase() + ' ' + fmt(a) + ' BYN', '+' + fmt(op.roundup) + ' BYN ' + (kopiNow(k) ? '→ сразу ' + k.asset : bought ? '→ копилка, куплено ' + k.asset + ' на ' + fmt(bought) + ' BYN' : '→ в копилку'));
   };
   return { adding, setAdding, name, setName, phone, setPhone, pick, subscribe, cancel, add, remove, buy };
 }
